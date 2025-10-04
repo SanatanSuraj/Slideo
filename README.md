@@ -14,13 +14,11 @@
 
 # Open-Source AI Presentation Generator and API (Gamma, Beautiful AI, Decktopus Alternative)
 
-
-**Presenton** is an open-source application for generating presentations with AI — all running locally on your device. Stay in control of your data and privacy while using models like OpenAI and Gemini, or use your own hosted models through Ollama.
+**Presenton** is an open-source application for generating presentations with AI — all running locally on your device. Stay in control of your data and privacy while using models like OpenAI and Google Gemini.
 
 __✨ Now, generate presentations with your existing PPTX file! Just upload your presentation file to create template design and then use that template to generate on brand and on design presentation on any topic.__
 
 ![Demo](readme_assets/demo.gif)
-
 
 > [!NOTE]
 > **Enterprise Inquiries:**
@@ -32,7 +30,6 @@ __✨ Now, generate presentations with your existing PPTX file! Just upload your
 > [!TIP]
 > For detailed setup guides, API documentation, and advanced configuration options, visit our **[Official Documentation](https://docs.presenton.ai)**
 
-
 ## ✨ More Freedom with AI Presentations
 
 Presenton gives you complete control over your AI presentation workflow. Choose your models, customize your experience, and keep your data private.
@@ -43,7 +40,6 @@ Presenton gives you complete control over your AI presentation workflow. Choose 
 * ✅ **Export Ready** — Save as PowerPoint (PPTX) and PDF with professional formatting
 * ✅ **Built-In MCP Server** — Generate presentations over Model Context Protocol
 * ✅ **Bring Your Own Key** — Use your own API keys for OpenAI, Google Gemini, Anthropic Claude, or any compatible provider. Only pay for what you use, no hidden fees or subscriptions.
-* ✅ **Ollama Integration** — Run open-source models locally with full privacy
 * ✅ **OpenAI API Compatible** — Connect to any OpenAI-compatible endpoint with your own models
 * ✅ **Multi-Provider Support** — Mix and match text and image generation providers
 * ✅ **Versatile Image Generation** — Choose from DALL-E 3, Gemini Flash, Pexels, or Pixabay
@@ -51,7 +47,6 @@ Presenton gives you complete control over your AI presentation workflow. Choose 
 * ✅ **Runs Locally** — All processing happens on your device, no cloud dependencies
 * ✅ **API Deployment** — Host as your own API service for your team
 * ✅ **Fully Open-Source** — Apache 2.0 licensed, inspect, modify, and contribute
-* ✅ **Docker Ready** — One-command deployment with GPU support for local models
 
 ## Presenton Cloud
 <a href="https://presenton.ai" target="_blank" align="center">
@@ -59,97 +54,99 @@ Presenton gives you complete control over your AI presentation workflow. Choose 
   <img src="readme_assets/cloud-banner.png" height="350" alt="Presenton Logo" />
 </a>
 
-## Running Presenton Docker
+## 🚀 Local Development Setup
 
-#### 1. Start Presenton
+### Prerequisites
+- **Node.js 20+**
+- **Python 3.11**
+- **npm** (comes with Node.js)
 
-##### Linux/MacOS (Bash/Zsh Shell):
+### Quick Start
+
+1. **Clone the repository**
 ```bash
-docker run -it --name presenton -p 5000:80 -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
+git clone <repository-url>
+cd presenton
 ```
 
-##### Windows (PowerShell):
+2. **Install dependencies**
 ```bash
-docker run -it --name presenton -p 5000:80 -v "${PWD}\app_data:/app_data" ghcr.io/presenton/presenton:latest
+bash setup.sh
 ```
 
-#### 2. Open Presenton
-Open http://localhost:5000 on browser of your choice to use Presenton.
-
-> **Note: You can replace 5000 with any other port number of your choice to run Presenton on a different port number.**
-
-## Deployment Configurations
-
-You may want to directly provide your API KEYS as environment variables and keep them hidden. You can set these environment variables to achieve it.
-
-- **CAN_CHANGE_KEYS=[true/false]**: Set this to **false** if you want to keep API Keys hidden and make them unmodifiable.
-- **LLM=[openai/google/anthropic/ollama/custom]**: Select **LLM** of your choice.
-- **OPENAI_API_KEY=[Your OpenAI API Key]**: Provide this if **LLM** is set to **openai**
-- **OPENAI_MODEL=[OpenAI Model ID]**: Provide this if **LLM** is set to **openai** (default: "gpt-4.1")
-- **GOOGLE_API_KEY=[Your Google API Key]**: Provide this if **LLM** is set to **google**
-- **GOOGLE_MODEL=[Google Model ID]**: Provide this if **LLM** is set to **google** (default: "models/gemini-2.0-flash")
-- **ANTHROPIC_API_KEY=[Your Anthropic API Key]**: Provide this if **LLM** is set to **anthropic**
-- **ANTHROPIC_MODEL=[Anthropic Model ID]**: Provide this if **LLM** is set to **anthropic** (default: "claude-3-5-sonnet-20241022")
-- **OLLAMA_URL=[Custom Ollama URL]**: Provide this if you want to custom Ollama URL and **LLM** is set to **ollama**
-- **OLLAMA_MODEL=[Ollama Model ID]**: Provide this if **LLM** is set to **ollama**
-- **CUSTOM_LLM_URL=[Custom OpenAI Compatible URL]**: Provide this if **LLM** is set to **custom**
-- **CUSTOM_LLM_API_KEY=[Custom OpenAI Compatible API KEY]**: Provide this if **LLM** is set to **custom**
-- **CUSTOM_MODEL=[Custom Model ID]**: Provide this if **LLM** is set to **custom**
-- **TOOL_CALLS=[Enable/Disable Tool Calls on Custom LLM]**: If **true**, **LLM** will use Tool Call instead of Json Schema for Structured Output.
-- **DISABLE_THINKING=[Enable/Disable Thinking on Custom LLM]**: If **true**, Thinking will be disabled.
-- **WEB_GROUNDING=[Enable/Disable Web Search for OpenAI, Google And Anthropic]**: If **true**, LLM will be able to search web for better results.
-
-You can also set the following environment variables to customize the image generation provider and API keys:
-
-- **IMAGE_PROVIDER=[pexels/pixabay/gemini_flash/dall-e-3]**: Select the image provider of your choice.
-  - Defaults to **dall-e-3** for OpenAI models, **gemini_flash** for Google models if not set.
-- **PEXELS_API_KEY=[Your Pexels API Key]**: Required if using **pexels** as the image provider.
-- **PIXABAY_API_KEY=[Your Pixabay API Key]**: Required if using **pixabay** as the image provider.
-- **GOOGLE_API_KEY=[Your Google API Key]**: Required if using **gemini_flash** as the image provider.
-- **OPENAI_API_KEY=[Your OpenAI API Key]**: Required if using **dall-e-3** as the image provider.
-
-You can disable anonymous telemetry using the following environment variable:
-- **DISABLE_ANONYMOUS_TELEMETRY=[true/false]**: Set this to **true** to disable anonymous telemetry.
-
-
-> **Note:** You can freely choose both the LLM (text generation) and the image provider. Supported image providers: **pexels**, **pixabay**, **gemini_flash** (Google), and **dall-e-3** (OpenAI).
-
-### Using OpenAI
+3. **Start the application**
 ```bash
-docker run -it --name presenton -p 5000:80 -e LLM="openai" -e OPENAI_API_KEY="******" -e IMAGE_PROVIDER="dall-e-3" -e CAN_CHANGE_KEYS="false" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
+# Quick start with automatic process management
+./run_local.sh
+
+# Or use npm scripts
+npm run dev    # Development mode
+npm start      # Production mode
 ```
 
-### Using Google
+4. **Access the application**
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+### 🚀 Quick Start Scripts
+
+**`setup.sh`** - Automated setup script:
+- Checks Node.js 20+ and Python 3.11+
+- Installs all dependencies
+- Creates `.env` file from template
+- Sets up app data directory
+
+**`run_local.sh`** - Development runner:
+- Automatically kills existing processes
+- Starts FastAPI backend (port 8000)
+- Starts Next.js frontend (port 3000)
+- Graceful shutdown with Ctrl+C
+- Colorful status output
+- **MCP Server**: http://localhost:8001
+
+### Environment Configuration
+
+**API keys are configured exclusively through environment variables** - no manual key entry in the UI.
+
 ```bash
-docker run -it --name presenton -p 5000:80 -e LLM="google" -e GOOGLE_API_KEY="******" -e IMAGE_PROVIDER="gemini_flash" -e CAN_CHANGE_KEYS="false" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
+# Copy the example file
+cp .env.example .env
+
+# Edit with your API keys
+nano .env
 ```
 
-### Using Ollama
-```bash
-docker run -it --name presenton -p 5000:80 -e LLM="ollama" -e OLLAMA_MODEL="llama3.2:3b" -e IMAGE_PROVIDER="pexels" -e PEXELS_API_KEY="*******" -e CAN_CHANGE_KEYS="false" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
-```
-
-### Using Anthropic
-```bash
-docker run -it --name presenton -p 5000:80 -e LLM="anthropic" -e ANTHROPIC_API_KEY="******" -e IMAGE_PROVIDER="pexels" -e PEXELS_API_KEY="******" -e CAN_CHANGE_KEYS="false" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
-```
-
-### Using OpenAI Compatible API
-```bash
-docker run -it -p 5000:80 -e CAN_CHANGE_KEYS="false"  -e LLM="custom" -e CUSTOM_LLM_URL="http://*****" -e CUSTOM_LLM_API_KEY="*****" -e CUSTOM_MODEL="llama3.2:3b" -e IMAGE_PROVIDER="pexels" -e  PEXELS_API_KEY="********" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
-```
-
-#### Running Presenton with GPU Support
-
-To use GPU acceleration with Ollama models, you need to install and configure the NVIDIA Container Toolkit. This allows Docker containers to access your NVIDIA GPU.
-
-Once the NVIDIA Container Toolkit is installed and configured, you can run Presenton with GPU support by adding the `--gpus=all` flag:
+**Required Environment Variables:**
 
 ```bash
-docker run -it --name presenton --gpus=all -p 5000:80 -e LLM="ollama" -e OLLAMA_MODEL="llama3.2:3b" -e IMAGE_PROVIDER="pexels" -e PEXELS_API_KEY="*******" -e CAN_CHANGE_KEYS="false" -v "./app_data:/app_data" ghcr.io/presenton/presenton:latest
+# Choose your LLM provider
+LLM=openai  # or google, anthropic
+
+# OpenAI Configuration
+OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_MODEL=gpt-4o
+
+# Google Gemini Configuration  
+GOOGLE_API_KEY=your-google-api-key-here
+GOOGLE_MODEL=gemini-2.0-flash-exp
+
+# Anthropic Claude Configuration (Optional)
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+
+# Image Generation
+IMAGE_PROVIDER=dall-e-3
+PEXELS_API_KEY=your-pexels-api-key-here
+PIXABAY_API_KEY=your-pixabay-api-key-here
+
+# Optional Settings
+CAN_CHANGE_KEYS=false  # Disable UI key changes for security
+WEB_GROUNDING=false
+DISABLE_ANONYMOUS_TELEMETRY=false
 ```
 
-> **Note:** GPU acceleration significantly improves the performance of Ollama models, especially for larger models. Make sure you have sufficient GPU memory for your chosen model.
+**Security Note:** API keys are never stored in the browser or local storage. They are only read from environment variables for maximum security.
 
 ## Generate Presentation over API
 
@@ -192,7 +189,7 @@ Content-Type: `application/json`
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/ppt/presentation/generate \
+curl -X POST http://localhost:8000/api/v1/ppt/presentation/generate \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Introduction to Machine Learning",
@@ -229,7 +226,6 @@ For detailed info checkout [API documentation](https://docs.presenton.ai/using-p
 - [ ] Ability for users to change system prompt
 - [X] Support external SQL database
 
-
 ## UI Features
 
 ### 1. Add prompt, select number of slides and language
@@ -258,4 +254,4 @@ For detailed info checkout [API documentation](https://docs.presenton.ai/using-p
 
 ## License
 
-Apache 2.0
+Apache 2.0# Slideo
