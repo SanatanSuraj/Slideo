@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from api.v1.ppt.endpoints.images import IMAGES_ROUTER
 from models.image_prompt import ImagePrompt
 from services.image_generation_service import ImageGenerationService
-from models.sql.image_asset import ImageAsset
+from models.mongo.asset import AssetInDB
 
 
 class TestImageGenerationService:
@@ -173,7 +173,7 @@ class TestImageGenerationService:
                                 result = await service.generate_image(sample_image_prompt)
                                 
                                 # Should return ImageAsset for AI providers
-                                assert isinstance(result, ImageAsset)
+                                assert isinstance(result, AssetInDB)
                                 assert result.path == test_image_path
                                 assert result.extras["prompt"] == sample_image_prompt.prompt
     
@@ -340,7 +340,7 @@ class TestImageGenerationEndpoint:
         """
         test_prompt = "A beautiful sunset over mountains"
         
-        test_image_asset = ImageAsset(
+        test_image_asset = AssetInDB(
             path=f"{mock_images_directory}/test_image.jpg",
             extras={"prompt": test_prompt, "theme_prompt": "professional"}
         )

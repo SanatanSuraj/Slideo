@@ -1,56 +1,69 @@
-import asyncio
+from typing import List
+import os
 import json
-import chromadb
-from chromadb.config import Settings
-from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
-
 
 class IconFinderService:
+    """Simple icon finder service that returns placeholder icons"""
+    
     def __init__(self):
-        self.collection_name = "icons"
-        self.client = chromadb.PersistentClient(
-            path="chroma", settings=Settings(anonymized_telemetry=False)
-        )
-        print("Initializing icons collection...")
-        self._initialize_icons_collection()
-        print("Icons collection initialized.")
+        self.icons_path = os.path.join(os.path.dirname(__file__), "..", "static", "icons")
+        self.icons_data_path = os.path.join(os.path.dirname(__file__), "..", "assets", "icons.json")
+        self._icons_cache = None
+    
+    def _load_icons(self):
+        """Load icons from the icons.json file"""
+        if self._icons_cache is None:
+            try:
+                with open(self.icons_data_path, 'r') as f:
+                    self._icons_cache = json.load(f)
+            except FileNotFoundError:
+                # Return a default set of icons if the file doesn't exist
+                self._icons_cache = {
+                    "search": ["search", "magnifying-glass", "find"],
+                    "user": ["user", "person", "profile"],
+                    "home": ["home", "house"],
+                    "settings": ["settings", "gear", "cog"],
+                    "download": ["download", "arrow-down"],
+                    "upload": ["upload", "arrow-up"],
+                    "edit": ["edit", "pencil", "modify"],
+                    "delete": ["delete", "trash", "remove"],
+                    "add": ["add", "plus", "create"],
+                    "close": ["close", "x", "cancel"],
+                    "save": ["save", "floppy", "disk"],
+                    "print": ["print", "printer"],
+                    "email": ["email", "mail", "envelope"],
+                    "phone": ["phone", "telephone", "call"],
+                    "calendar": ["calendar", "date", "schedule"],
+                    "clock": ["clock", "time", "hour"],
+                    "star": ["star", "favorite", "bookmark"],
+                    "heart": ["heart", "love", "like"],
+                    "warning": ["warning", "alert", "caution"],
+                    "info": ["info", "information", "help"],
+                    "check": ["check", "tick", "done"],
+                    "arrow": ["arrow", "direction", "point"],
+                    "chart": ["chart", "graph", "analytics"],
+                    "trending": ["trending", "growth", "increase"],
+                    "costs": ["costs", "money", "price"],
+                    "efficiency": ["efficiency", "optimization", "performance"]
+                }
+        return self._icons_cache
+    
+    async def search_icons(self, query: str, limit: int = 20) -> List[str]:
+        """Search for icons based on query"""
+        icons_data = self._load_icons()
+        query_lower = query.lower()
+        
+        # Simple search through icon categories
+        matching_icons = []
+        for category, keywords in icons_data.items():
+            if any(keyword in query_lower for keyword in keywords):
+                matching_icons.append(category)
+        
+        # If no matches found, return some default icons
+        if not matching_icons:
+            matching_icons = ["search", "info", "star", "check"]
+        
+        return matching_icons[:limit]
 
-    def _initialize_icons_collection(self):
-        self.embedding_function = ONNXMiniLM_L6_V2()
-        self.embedding_function.DOWNLOAD_PATH = "chroma/models"
-        self.embedding_function._download_model_if_not_exists()
-        try:
-            self.collection = self.client.get_collection(
-                self.collection_name, embedding_function=self.embedding_function
-            )
-        except Exception:
-            with open("assets/icons.json", "r") as f:
-                icons = json.load(f)
-
-            documents = []
-            ids = []
-
-            for i, each in enumerate(icons["icons"]):
-                if each["name"].split("-")[-1] == "bold":
-                    doc_text = f"{each['name']} {each['tags']}"
-                    documents.append(doc_text)
-                    ids.append(each["name"])
-
-            if documents:
-                self.collection = self.client.create_collection(
-                    name=self.collection_name,
-                    embedding_function=self.embedding_function,
-                    metadata={"hnsw:space": "cosine"},
-                )
-                self.collection.add(documents=documents, ids=ids)
-
-    async def search_icons(self, query: str, k: int = 1):
-        result = await asyncio.to_thread(
-            self.collection.query,
-            query_texts=[query],
-            n_results=k,
-        )
-        return [f"/static/icons/bold/{each}.svg" for each in result["ids"][0]]
-
-
+# Global instance
 ICON_FINDER_SERVICE = IconFinderService()

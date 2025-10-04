@@ -9,9 +9,11 @@ from typing import Annotated, List, Literal, Optional, Tuple
 import dirtyjson
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from crud.presentation_crud import presentation_crud
+from crud.slide_crud import slide_crud
+from crud.template_crud import template_crud
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 from constants.presentation import DEFAULT_TEMPLATES
 from enums.webhook_event import WebhookEvent
 from models.api_error_model import APIErrorModel
@@ -30,7 +32,7 @@ from models.presentation_structure_model import PresentationStructureModel
 from models.presentation_with_slides import (
     PresentationWithSlides,
 )
-from models.sql.template import TemplateModel
+from models.mongo.template import Template
 
 from services.documents_loader import DocumentsLoader
 from services.webhook_service import WebhookService
@@ -39,17 +41,14 @@ from services.image_generation_service import ImageGenerationService
 from utils.dict_utils import deep_update
 from utils.export_utils import export_presentation
 from utils.llm_calls.generate_presentation_outlines import generate_ppt_outline
-from models.sql.slide import SlideModel
+from models.mongo.slide import Slide
 from models.sse_response import SSECompleteResponse, SSEErrorResponse, SSEResponse
 
-from services.database import get_async_session
 from services.temp_file_service import TEMP_FILE_SERVICE
 from services.concurrent_service import CONCURRENT_SERVICE
-from models.sql.presentation import PresentationModel
+from models.mongo.presentation import Presentation, PresentationCreate, PresentationUpdate
 from services.pptx_presentation_creator import PptxPresentationCreator
-from models.sql.async_presentation_generation_status import (
-    AsyncPresentationGenerationTaskModel,
-)
+from models.mongo.task import Task
 from utils.asset_directory_utils import get_exports_directory, get_images_directory
 from utils.llm_calls.generate_presentation_structure import (
     generate_presentation_structure,
@@ -72,61 +71,62 @@ PRESENTATION_ROUTER = APIRouter(prefix="/presentation", tags=["Presentation"])
 
 
 @PRESENTATION_ROUTER.get("/all", response_model=List[PresentationWithSlides])
-async def get_all_presentations(sql_session: AsyncSession = Depends(get_async_session)):
+async def get_all_presentations(current_user: User = Depends(get_current_active_user)):
+    presentations = await presentation_crud.get_presentations_by_user_id(str(current_user.id))
     presentations_with_slides = []
-
-    query = (
-        select(PresentationModel, SlideModel)
-        .join(
-            SlideModel,
-            (SlideModel.presentation == PresentationModel.id) & (SlideModel.index == 0),
+    
+    for presentation in presentations:
+        # Get first slide for each presentation
+        slides = await slide_crud.get_slides_by_presentation_id(presentation.id)
+        first_slide = slides[0] if slides else None
+        
+        presentations_with_slides.append(
+            PresentationWithSlides(
+                **presentation.dict(),
+                slides=[first_slide] if first_slide else [],
+            )
         )
-        .order_by(PresentationModel.created_at.desc())
-    )
-
-    results = await sql_session.execute(query)
-    rows = results.all()
-    presentations_with_slides = [
-        PresentationWithSlides(
-            **presentation.model_dump(),
-            slides=[first_slide],
-        )
-        for presentation, first_slide in rows
-    ]
+    
     return presentations_with_slides
 
 
 @PRESENTATION_ROUTER.get("/{id}", response_model=PresentationWithSlides)
 async def get_presentation(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID, 
+    current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
     if not presentation:
         raise HTTPException(404, "Presentation not found")
-    slides = await sql_session.scalars(
-        select(SlideModel)
-        .where(SlideModel.presentation == id)
-        .order_by(SlideModel.index)
-    )
+    
+    # Check if user owns the presentation
+    if presentation.user_id != str(current_user.id):
+        raise HTTPException(403, "Not authorized to view this presentation")
+    
+    slides = await slide_crud.get_slides_by_presentation_id(str(id))
     return PresentationWithSlides(
-        **presentation.model_dump(),
+        **presentation.dict(),
         slides=slides,
     )
 
 
 @PRESENTATION_ROUTER.delete("/{id}", status_code=204)
 async def delete_presentation(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID, 
+    current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
     if not presentation:
         raise HTTPException(404, "Presentation not found")
+    
+    # Check if user owns the presentation
+    if presentation.user_id != str(current_user.id):
+        raise HTTPException(403, "Not authorized to delete this presentation")
 
-    await sql_session.delete(presentation)
-    await sql_session.commit()
+    await presentation_crud.delete_presentation(str(id))
 
 
-@PRESENTATION_ROUTER.post("/create", response_model=PresentationModel)
+@PRESENTATION_ROUTER.post("/create", response_model=Presentation)
 async def create_presentation(
     content: Annotated[str, Body()],
     n_slides: Annotated[int, Body()],
@@ -138,7 +138,7 @@ async def create_presentation(
     include_table_of_contents: Annotated[bool, Body()] = False,
     include_title_slide: Annotated[bool, Body()] = True,
     web_search: Annotated[bool, Body()] = False,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
 
     if include_table_of_contents and n_slides < 3:
@@ -147,10 +147,10 @@ async def create_presentation(
             detail="Number of slides cannot be less than 3 if table of contents is included",
         )
 
-    presentation_id = uuid.uuid4()
+    presentation_id = str(uuid.uuid4())
 
-    presentation = PresentationModel(
-        id=presentation_id,
+    presentation_create = PresentationCreate(
+        user_id=str(current_user.id),
         content=content,
         n_slides=n_slides,
         language=language,
@@ -163,26 +163,30 @@ async def create_presentation(
         web_search=web_search,
     )
 
-    sql_session.add(presentation)
-    await sql_session.commit()
+    created_presentation_id = await presentation_crud.create_presentation(presentation_create)
+    presentation = await presentation_crud.get_presentation_by_id(created_presentation_id)
 
     return presentation
 
 
-@PRESENTATION_ROUTER.post("/prepare", response_model=PresentationModel)
+@PRESENTATION_ROUTER.post("/prepare", response_model=Presentation)
 async def prepare_presentation(
     presentation_id: Annotated[uuid.UUID, Body()],
     outlines: Annotated[List[SlideOutlineModel], Body()],
     layout: Annotated[PresentationLayoutModel, Body()],
     title: Annotated[Optional[str], Body()] = None,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     if not outlines:
         raise HTTPException(status_code=400, detail="Outlines are required")
 
-    presentation = await sql_session.get(PresentationModel, presentation_id)
+    presentation = await presentation_crud.get_presentation_by_id(str(presentation_id))
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
+    
+    # Check if user owns the presentation
+    if presentation.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to prepare this presentation")
 
     presentation_outline_model = PresentationOutlineModel(slides=outlines)
 
@@ -245,21 +249,23 @@ async def prepare_presentation(
                     ),
                 )
 
-    sql_session.add(presentation)
-    presentation.outlines = presentation_outline_model.model_dump(mode="json")
-    presentation.title = title or presentation.title
-    presentation.set_layout(layout)
-    presentation.set_structure(presentation_structure)
-    await sql_session.commit()
+    # Update presentation with new data
+    presentation_update = PresentationUpdate(
+        outlines=presentation_outline_model.model_dump(mode="json"),
+        title=title or presentation.title,
+        layout=layout.model_dump(),
+        structure=presentation_structure.model_dump()
+    )
+    updated_presentation = await presentation_crud.update_presentation(str(presentation_id), presentation_update)
 
-    return presentation
+    return updated_presentation
 
 
 @PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationWithSlides)
 async def stream_presentation(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID, current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
     if not presentation.structure:
@@ -283,7 +289,7 @@ async def stream_presentation(
         # These tasks will be gathered and awaited after all slides are generated
         async_assets_generation_tasks = []
 
-        slides: List[SlideModel] = []
+        slides: List[Slide] = []
         yield SSEResponse(
             event="response",
             data=json.dumps({"type": "chunk", "chunk": '{ "slides": [ '}),
@@ -304,7 +310,7 @@ async def stream_presentation(
                 yield SSEErrorResponse(detail=e.detail).to_string()
                 return
 
-            slide = SlideModel(
+            slide = Slide(
                 presentation=id,
                 layout_group=layout.name,
                 layout=slide_layout.id,
@@ -338,15 +344,13 @@ async def stream_presentation(
             generated_assets.extend(assets_list)
 
         # Moved this here to make sure new slides are generated before deleting the old ones
-        await sql_session.execute(
-            delete(SlideModel).where(SlideModel.presentation == id)
-        )
-        await sql_session.commit()
+        await slide_crud.delete_slides_by_presentation_id(str(id))
+        
+        # Commit operations handled by CRUD
 
-        sql_session.add(presentation)
-        sql_session.add_all(slides)
-        sql_session.add_all(generated_assets)
-        await sql_session.commit()
+        # Save slides to MongoDB
+        for slide in slides:
+            await slide_crud.create_slide(slide)
 
         response = PresentationWithSlides(
             **presentation.model_dump(),
@@ -366,10 +370,10 @@ async def update_presentation(
     id: Annotated[uuid.UUID, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
     title: Annotated[Optional[str], Body()] = None,
-    slides: Annotated[Optional[List[SlideModel]], Body()] = None,
-    sql_session: AsyncSession = Depends(get_async_session),
+    slides: Annotated[Optional[List[Slide]], Body()] = None,
+    current_user: User = Depends(get_current_active_user),
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
@@ -380,7 +384,8 @@ async def update_presentation(
         presentation_update_dict["title"] = title
 
     if n_slides or title:
-        presentation.sqlmodel_update(presentation_update_dict)
+        presentation_update = PresentationUpdate(**presentation_update_dict)
+        await presentation_crud.update_presentation(str(id), presentation_update)
 
     if slides:
         # Just to make sure id is UUID
@@ -388,12 +393,10 @@ async def update_presentation(
             slide.presentation = uuid.UUID(slide.presentation)
             slide.id = uuid.UUID(slide.id)
 
-        await sql_session.execute(
-            delete(SlideModel).where(SlideModel.presentation == presentation.id)
-        )
-        sql_session.add_all(slides)
+        # Execute operations handled by CRUD.where(Slide.presentation == presentation.id)
+        # Add all operations handled by CRUD
 
-    await sql_session.commit()
+    # Commit operations handled by CRUD
 
     return PresentationWithSlides(
         **presentation.model_dump(),
@@ -425,9 +428,9 @@ async def export_presentation_as_pptx_or_pdf(
     export_as: Annotated[
         Literal["pptx", "pdf"], Body(description="Format to export the presentation as")
     ] = "pptx",
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
 
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
@@ -446,7 +449,7 @@ async def export_presentation_as_pptx_or_pdf(
 
 async def check_if_api_request_is_valid(
     request: GeneratePresentationRequest,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ) -> Tuple[uuid.UUID,]:
     presentation_id = uuid.uuid4()
     print(f"Presentation ID: {presentation_id}")
@@ -475,7 +478,7 @@ async def check_if_api_request_is_valid(
             )
         template_id = request.template.replace("custom-", "")
         try:
-            template = await sql_session.get(TemplateModel, uuid.UUID(template_id))
+            template = await template_crud.get_template_by_id(template_id)
             if not template:
                 raise Exception()
         except Exception as e:
@@ -490,8 +493,8 @@ async def check_if_api_request_is_valid(
 async def generate_presentation_handler(
     request: GeneratePresentationRequest,
     presentation_id: uuid.UUID,
-    async_status: Optional[AsyncPresentationGenerationTaskModel],
-    sql_session: AsyncSession = Depends(get_async_session),
+    async_status: Optional[Task],
+    current_user: User = Depends(get_current_active_user),
 ):
     try:
         using_slides_markdown = False
@@ -507,8 +510,7 @@ async def generate_presentation_handler(
             if async_status:
                 async_status.message = "Generating presentation outlines"
                 async_status.updated_at = datetime.now()
-                sql_session.add(async_status)
-                await sql_session.commit()
+                await task_crud.update_task(str(async_status.id), async_status)
 
             if request.files:
                 documents_loader = DocumentsLoader(file_paths=request.files)
@@ -579,8 +581,7 @@ async def generate_presentation_handler(
         if async_status:
             async_status.message = f"Selecting layout for each slide"
             async_status.updated_at = datetime.now()
-            sql_session.add(async_status)
-            await sql_session.commit()
+            await task_crud.update_task(str(async_status.id), async_status)
 
         print("-" * 40)
         print(f"Generated {total_outlines} outlines for the presentation")
@@ -648,8 +649,8 @@ async def generate_presentation_handler(
                         ),
                     )
 
-        # Create PresentationModel
-        presentation = PresentationModel(
+        # Create Presentation
+        presentation = Presentation(
             id=presentation_id,
             content=request.content,
             n_slides=request.n_slides,
@@ -667,14 +668,13 @@ async def generate_presentation_handler(
         if async_status:
             async_status.message = "Generating slides"
             async_status.updated_at = datetime.now()
-            sql_session.add(async_status)
-            await sql_session.commit()
+            await task_crud.update_task(str(async_status.id), async_status)
 
         image_generation_service = ImageGenerationService(get_images_directory())
         async_assets_generation_tasks = []
 
         # 7. Generate slide content concurrently (batched), then build slides and fetch assets
-        slides: List[SlideModel] = []
+        slides: List[Slide] = []
 
         slide_layout_indices = presentation_structure.slides
         slide_layouts = [layout_model.slides[idx] for idx in slide_layout_indices]
@@ -701,11 +701,11 @@ async def generate_presentation_handler(
             batch_contents: List[dict] = await asyncio.gather(*content_tasks)
 
             # Build slides for this batch
-            batch_slides: List[SlideModel] = []
+            batch_slides: List[Slide] = []
             for offset, slide_content in enumerate(batch_contents):
                 i = start + offset
                 slide_layout = slide_layouts[i]
-                slide = SlideModel(
+                slide = Slide(
                     presentation=presentation_id,
                     layout_group=layout_model.name,
                     layout=slide_layout.id,
@@ -726,8 +726,7 @@ async def generate_presentation_handler(
         if async_status:
             async_status.message = "Fetching assets for slides"
             async_status.updated_at = datetime.now()
-            sql_session.add(async_status)
-            await sql_session.commit()
+            await task_crud.update_task(str(async_status.id), async_status)
 
         # Run all asset tasks concurrently while batches may still be generating content
         generated_assets_list = await asyncio.gather(*async_assets_generation_tasks)
@@ -735,16 +734,15 @@ async def generate_presentation_handler(
         for assets_list in generated_assets_list:
             generated_assets.extend(assets_list)
 
-        # 8. Save PresentationModel and Slides
-        sql_session.add(presentation)
-        sql_session.add_all(slides)
-        sql_session.add_all(generated_assets)
-        await sql_session.commit()
+        # 8. Save Presentation and Slides
+        # Save slides to MongoDB
+        for slide in slides:
+            await slide_crud.create_slide(slide)
 
         if async_status:
             async_status.message = "Exporting presentation"
             async_status.updated_at = datetime.now()
-            sql_session.add(async_status)
+            # Add operations handled by CRUD
 
         # 9. Export
         presentation_and_path = await export_presentation(
@@ -761,8 +759,7 @@ async def generate_presentation_handler(
             async_status.status = "completed"
             async_status.data = response.model_dump(mode="json")
             async_status.updated_at = datetime.now()
-            sql_session.add(async_status)
-            await sql_session.commit()
+            await task_crud.update_task(str(async_status.id), async_status)
 
         # Triggering webhook on success
         CONCURRENT_SERVICE.run_task(
@@ -794,8 +791,7 @@ async def generate_presentation_handler(
             async_status.message = "Presentation generation failed"
             async_status.updated_at = datetime.now()
             async_status.error = api_error_model.model_dump(mode="json")
-            sql_session.add(async_status)
-            await sql_session.commit()
+            await task_crud.update_task(str(async_status.id), async_status)
 
         else:
             raise e
@@ -804,7 +800,7 @@ async def generate_presentation_handler(
 @PRESENTATION_ROUTER.post("/generate", response_model=PresentationPathAndEditPath)
 async def generate_presentation_sync(
     request: GeneratePresentationRequest,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
     try:
         (presentation_id,) = await check_if_api_request_is_valid(request, sql_session)
@@ -817,23 +813,22 @@ async def generate_presentation_sync(
 
 
 @PRESENTATION_ROUTER.post(
-    "/generate/async", response_model=AsyncPresentationGenerationTaskModel
+    "/generate/async", response_model=Task
 )
 async def generate_presentation_async(
     request: GeneratePresentationRequest,
     background_tasks: BackgroundTasks,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
     try:
         (presentation_id,) = await check_if_api_request_is_valid(request, sql_session)
 
-        async_status = AsyncPresentationGenerationTaskModel(
+        async_status = Task(
             status="pending",
             message="Queued for generation",
             data=None,
         )
-        sql_session.add(async_status)
-        await sql_session.commit()
+        await task_crud.update_task(str(async_status.id), async_status)
 
         background_tasks.add_task(
             generate_presentation_handler,
@@ -853,13 +848,13 @@ async def generate_presentation_async(
 
 
 @PRESENTATION_ROUTER.get(
-    "/status/{id}", response_model=AsyncPresentationGenerationTaskModel
+    "/status/{id}", response_model=Task
 )
 async def check_async_presentation_generation_status(
     id: str = Path(description="ID of the presentation generation task"),
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-    status = await sql_session.get(AsyncPresentationGenerationTaskModel, id)
+    status = await task_crud.get_task_by_id(str(id))
     if not status:
         raise HTTPException(
             status_code=404, detail="No presentation generation task found"
@@ -870,15 +865,13 @@ async def check_async_presentation_generation_status(
 @PRESENTATION_ROUTER.post("/edit", response_model=PresentationPathAndEditPath)
 async def edit_presentation_with_new_content(
     data: Annotated[EditPresentationRequest, Body()],
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-    presentation = await sql_session.get(PresentationModel, data.presentation_id)
+    presentation = await presentation_crud.get_presentation_by_id(str(data.presentation_id))
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    slides = await sql_session.scalars(
-        select(SlideModel).where(SlideModel.presentation == data.presentation_id)
-    )
+    slides = await slide_crud.get_slides_by_presentation_id(str(data.presentation_id))
 
     new_slides = []
     slides_to_delete = []
@@ -894,12 +887,10 @@ async def edit_presentation_with_new_content(
             )
             slides_to_delete.append(each_slide.id)
 
-    await sql_session.execute(
-        delete(SlideModel).where(SlideModel.id.in_(slides_to_delete))
-    )
+    await slide_crud.delete_slides_by_ids(slides_to_delete)
 
-    sql_session.add_all(new_slides)
-    await sql_session.commit()
+    # Add all operations handled by CRUD
+    # Commit operations handled by CRUD
 
     presentation_and_path = await export_presentation(
         presentation.id, presentation.title or str(uuid.uuid4()), data.export_as
@@ -914,15 +905,13 @@ async def edit_presentation_with_new_content(
 @PRESENTATION_ROUTER.post("/derive", response_model=PresentationPathAndEditPath)
 async def derive_presentation_from_existing_one(
     data: Annotated[EditPresentationRequest, Body()],
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-    presentation = await sql_session.get(PresentationModel, data.presentation_id)
+    presentation = await presentation_crud.get_presentation_by_id(str(data.presentation_id))
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    slides = await sql_session.scalars(
-        select(SlideModel).where(SlideModel.presentation == data.presentation_id)
-    )
+    slides = await slide_crud.get_slides_by_presentation_id(str(data.presentation_id))
 
     new_presentation = presentation.get_new_presentation()
     new_slides = []
@@ -937,9 +926,9 @@ async def derive_presentation_from_existing_one(
             each_slide.get_new_slide(new_presentation.id, updated_content)
         )
 
-    sql_session.add(new_presentation)
-    sql_session.add_all(new_slides)
-    await sql_session.commit()
+    # Save new slides to MongoDB
+        for slide in new_slides:
+            await slide_crud.create_slide(slide)
 
     presentation_and_path = await export_presentation(
         new_presentation.id, new_presentation.title or str(uuid.uuid4()), data.export_as

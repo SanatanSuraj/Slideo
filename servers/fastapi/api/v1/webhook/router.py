@@ -1,11 +1,12 @@
 from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from enums.webhook_event import WebhookEvent
-from models.sql.webhook_subscription import WebhookSubscription
-from services.database import get_async_session
+from models.mongo.webhook import WebhookSubscriptionCreate
+from crud.webhook_crud import webhook_crud
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 
 API_V1_WEBHOOK_ROUTER = APIRouter(prefix="/api/v1/webhook", tags=["Webhook"])
 
@@ -25,16 +26,16 @@ class SubscribeToWebhookResponse(BaseModel):
 )
 async def subscribe_to_webhook(
     body: SubscribeToWebhookRequest,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-    webhook_subscription = WebhookSubscription(
+    webhook_data = WebhookSubscriptionCreate(
+        user_id=current_user.id,
         url=body.url,
         secret=body.secret,
-        event=body.event,
+        event=body.event.value,
     )
-    sql_session.add(webhook_subscription)
-    await sql_session.commit()
-    return SubscribeToWebhookResponse(id=webhook_subscription.id)
+    webhook_id = await webhook_crud.create_webhook_subscription(webhook_data)
+    return SubscribeToWebhookResponse(id=webhook_id)
 
 
 @API_V1_WEBHOOK_ROUTER.delete("/unsubscribe", status_code=204)
@@ -42,12 +43,15 @@ async def unsubscribe_to_webhook(
     id: str = Body(
         embed=True, description="The ID of the webhook subscription to unsubscribe from"
     ),
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user),
 ):
-
-    webhook_subscription = await sql_session.get(WebhookSubscription, id)
+    webhook_subscription = await webhook_crud.get_webhook_subscription_by_id(id)
     if not webhook_subscription:
         raise HTTPException(404, "Webhook subscription not found")
+    
+    if webhook_subscription.user_id != current_user.id:
+        raise HTTPException(403, "Not enough permissions")
 
-    await sql_session.delete(webhook_subscription)
-    await sql_session.commit()
+    success = await webhook_crud.delete_webhook_subscription(id)
+    if not success:
+        raise HTTPException(500, "Failed to delete webhook subscription")

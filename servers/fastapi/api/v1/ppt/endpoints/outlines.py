@@ -6,10 +6,8 @@ import uuid
 import dirtyjson
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from models.presentation_outline_model import PresentationOutlineModel
-from models.sql.presentation import PresentationModel
+from models.mongo.presentation import Presentation, PresentationUpdate
 from models.sse_response import (
     SSECompleteResponse,
     SSEErrorResponse,
@@ -17,22 +15,29 @@ from models.sse_response import (
     SSEStatusResponse,
 )
 from services.temp_file_service import TEMP_FILE_SERVICE
-from services.database import get_async_session
+from crud.presentation_crud import presentation_crud
 from services.documents_loader import DocumentsLoader
 from utils.llm_calls.generate_presentation_outlines import generate_ppt_outline
 from utils.ppt_utils import get_presentation_title_from_outlines
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 
 OUTLINES_ROUTER = APIRouter(prefix="/outlines", tags=["Outlines"])
 
 
 @OUTLINES_ROUTER.get("/stream/{id}")
 async def stream_outlines(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID, 
+    current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await sql_session.get(PresentationModel, id)
+    presentation = await presentation_crud.get_presentation_by_id(str(id))
 
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
+    
+    # Check if user owns the presentation
+    if presentation.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to view this presentation")
 
     temp_dir = TEMP_FILE_SERVICE.create_temp_dir()
 
@@ -100,11 +105,12 @@ async def stream_outlines(
             :n_slides_to_generate
         ]
 
-        presentation.outlines = presentation_outlines.model_dump()
-        presentation.title = get_presentation_title_from_outlines(presentation_outlines)
-
-        sql_session.add(presentation)
-        await sql_session.commit()
+        # Update presentation with outlines and title
+        presentation_update = PresentationUpdate(
+            outlines=presentation_outlines.model_dump(),
+            title=get_presentation_title_from_outlines(presentation_outlines)
+        )
+        await presentation_crud.update_presentation(str(id), presentation_update)
 
         yield SSECompleteResponse(
             key="presentation", value=presentation.model_dump(mode="json")

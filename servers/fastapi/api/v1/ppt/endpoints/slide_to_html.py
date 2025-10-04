@@ -7,17 +7,18 @@ from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
 from pydantic import BaseModel
 from openai import OpenAI
 from openai import APIError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func
 from utils.asset_directory_utils import get_images_directory
-from services.database import get_async_session
-from models.sql.presentation_layout_code import PresentationLayoutCodeModel
+from models.mongo.presentation_layout_code import PresentationLayoutCode
 from .prompts import (
     GENERATE_HTML_SYSTEM_PROMPT,
     HTML_TO_REACT_SYSTEM_PROMPT,
     HTML_EDIT_SYSTEM_PROMPT,
 )
-from models.sql.template import TemplateModel
+from models.mongo.template import Template
+from crud.presentation_layout_code_crud import presentation_layout_code_crud
+from crud.template_crud import template_crud
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 
 
 # Create separate routers for each functionality
@@ -701,7 +702,8 @@ async def edit_html_with_images_endpoint(
     },
 )
 async def save_layouts(
-    request: SaveLayoutsRequest, session: AsyncSession = Depends(get_async_session)
+    request: SaveLayoutsRequest, 
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Save multiple layouts for presentations.
@@ -755,33 +757,30 @@ async def save_layouts(
                 )
 
             # Check if layout already exists for this presentation and layout_id
-            stmt = select(PresentationLayoutCodeModel).where(
-                PresentationLayoutCodeModel.presentation == layout_data.presentation,
-                PresentationLayoutCodeModel.layout_id == layout_data.layout_id,
+            existing_layout = await presentation_layout_code_crud.get_layout_code_by_presentation_and_layout_id(
+                str(layout_data.presentation), layout_data.layout_id
             )
-            result = await session.execute(stmt)
-            existing_layout = result.scalar_one_or_none()
 
             if existing_layout:
                 # Update existing layout
-                existing_layout.layout_name = layout_data.layout_name
-                existing_layout.layout_code = layout_data.layout_code
-                existing_layout.fonts = layout_data.fonts
-                existing_layout.updated_at = datetime.now()
+                layout_update = PresentationLayoutCodeUpdate(
+                    layout_name=layout_data.layout_name,
+                    layout_code=layout_data.layout_code,
+                    fonts=layout_data.fonts
+                )
+                await presentation_layout_code_crud.update_layout_code(existing_layout.id, layout_update)
             else:
                 # Create new layout
-                new_layout = PresentationLayoutCodeModel(
-                    presentation=layout_data.presentation,
+                layout_create = PresentationLayoutCodeCreate(
+                    presentation=str(layout_data.presentation),
                     layout_id=layout_data.layout_id,
                     layout_name=layout_data.layout_name,
                     layout_code=layout_data.layout_code,
-                    fonts=layout_data.fonts,
+                    fonts=layout_data.fonts
                 )
-                session.add(new_layout)
+                await presentation_layout_code_crud.create_layout_code(layout_create)
 
             saved_count += 1
-
-        await session.commit()
 
         return SaveLayoutsResponse(
             success=True,
@@ -791,10 +790,8 @@ async def save_layouts(
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
-        await session.rollback()
         raise
     except Exception as e:
-        await session.rollback()
         print(f"Unexpected error saving layouts: {str(e)}")
         raise HTTPException(
             status_code=500,
@@ -816,7 +813,8 @@ async def save_layouts(
     },
 )
 async def get_layouts(
-    presentation: UUID, session: AsyncSession = Depends(get_async_session)
+    presentation: UUID, 
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Retrieve all layouts for a specific presentation.
@@ -839,11 +837,7 @@ async def get_layouts(
             )
 
         # Query layouts for the given presentation_id
-        stmt = select(PresentationLayoutCodeModel).where(
-            PresentationLayoutCodeModel.presentation == presentation
-        )
-        result = await session.execute(stmt)
-        layouts_db = result.scalars().all()
+        layouts_db = await presentation_layout_code_crud.get_layout_codes_by_presentation(str(presentation))
 
         # Check if any layouts were found
         if not layouts_db:
@@ -855,7 +849,7 @@ async def get_layouts(
         # Convert to response format
         layouts = [
             LayoutData(
-                presentation=layout.presentation,
+                presentation=UUID(layout.presentation),
                 layout_id=layout.layout_id,
                 layout_name=layout.layout_name,
                 layout_code=layout.layout_code,
@@ -872,7 +866,7 @@ async def get_layouts(
         fonts_list = sorted(list(aggregated_fonts)) if aggregated_fonts else None
 
         # Fetch template meta
-        template_meta = await session.get(TemplateModel, presentation)
+        template_meta = await template_crud.get_template_by_id(str(presentation))
         template = None
         if template_meta:
             template = {
@@ -916,26 +910,19 @@ async def get_layouts(
     },
 )
 async def get_presentations_summary(
-    session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Get summary of all presentations with their layout counts.
     """
     try:
-        # Query to get presentation_id, count of layouts, and MAX(updated_at)
-        stmt = select(
-            PresentationLayoutCodeModel.presentation,
-            func.count(PresentationLayoutCodeModel.id).label("layout_count"),
-            func.max(PresentationLayoutCodeModel.updated_at).label("last_updated_at"),
-        ).group_by(PresentationLayoutCodeModel.presentation)
-
-        result = await session.execute(stmt)
-        presentation_data = result.all()
+        # Get presentation summary from MongoDB
+        presentation_data = await presentation_layout_code_crud.get_presentation_summary()
 
         # Convert to response format with template info if available
         presentations = []
         for row in presentation_data:
-            template_meta = await session.get(TemplateModel, row.presentation)
+            template_meta = await template_crud.get_template_by_id(row["presentation_id"])
             template = None
             if template_meta:
                 template = {
@@ -946,9 +933,9 @@ async def get_presentations_summary(
                 }
             presentations.append(
                 PresentationSummary(
-                    presentation_id=row.presentation,
-                    layout_count=row.layout_count,
-                    last_updated_at=row.last_updated_at,
+                    presentation_id=UUID(row["presentation_id"]),
+                    layout_count=row["layout_count"],
+                    last_updated_at=row["last_updated_at"],
                     template=template,
                 )
             )
@@ -983,27 +970,29 @@ async def get_presentations_summary(
 )
 async def create_template(
     request: TemplateCreateRequest,
-    session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         if not request.id or not request.name:
             raise HTTPException(status_code=400, detail="id and name are required")
 
         # Upsert template by id
-        existing = await session.get(TemplateModel, request.id)
+        existing = await template_crud.get_template_by_id(str(request.id))
         if existing:
-            existing.name = request.name
-            existing.description = request.description
-        else:
-            session.add(
-                TemplateModel(
-                    id=request.id, name=request.name, description=request.description
-                )
+            template_update = TemplateUpdate(
+                name=request.name,
+                description=request.description
             )
-        await session.commit()
-
-        # Read back
-        template = await session.get(TemplateModel, request.id)
+            template = await template_crud.update_template(str(request.id), template_update)
+        else:
+            template_create = TemplateCreate(
+                user_id=current_user.id,
+                name=request.name,
+                description=request.description
+            )
+            template_id = await template_crud.create_template(template_create)
+            template = await template_crud.get_template_by_id(template_id)
+        
         return TemplateCreateResponse(
             success=True,
             template={
@@ -1015,10 +1004,8 @@ async def create_template(
             message="Template saved",
         )
     except HTTPException:
-        await session.rollback()
         raise
     except Exception as e:
-        await session.rollback()
         raise HTTPException(
             status_code=500, detail=f"Failed to save template: {str(e)}"
         )
@@ -1027,17 +1014,12 @@ async def create_template(
 @LAYOUT_MANAGEMENT_ROUTER.delete("/delete-templates/{template_id}", status_code=204)
 async def delete_template(
     template_id: UUID,
-    session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
-        await session.execute(
-            delete(TemplateModel).where(TemplateModel.id == template_id)
-        )
-        await session.execute(
-            delete(PresentationLayoutCodeModel).where(
-                PresentationLayoutCodeModel.presentation == template_id,
-            )
-        )
-        await session.commit()
+        # Delete template
+        await template_crud.delete_template(str(template_id))
+        # Delete associated layout codes
+        await presentation_layout_code_crud.delete_layout_codes_by_presentation(str(template_id))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete template")

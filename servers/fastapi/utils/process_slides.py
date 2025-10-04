@@ -1,8 +1,8 @@
 import asyncio
 from typing import List, Tuple
 from models.image_prompt import ImagePrompt
-from models.sql.image_asset import ImageAsset
-from models.sql.slide import SlideModel
+from models.mongo.asset import AssetInDB
+from models.mongo.slide import SlideInDB
 from services.icon_finder_service import ICON_FINDER_SERVICE
 from services.image_generation_service import ImageGenerationService
 from utils.asset_directory_utils import get_images_directory
@@ -11,8 +11,8 @@ from utils.dict_utils import get_dict_at_path, get_dict_paths_with_key, set_dict
 
 async def process_slide_and_fetch_assets(
     image_generation_service: ImageGenerationService,
-    slide: SlideModel,
-) -> List[ImageAsset]:
+    slide: SlideInDB,
+) -> List[AssetInDB]:
 
     async_tasks = []
 
@@ -42,7 +42,7 @@ async def process_slide_and_fetch_assets(
     for image_path in image_paths:
         image_dict = get_dict_at_path(slide.content, image_path)
         result = results.pop()
-        if isinstance(result, ImageAsset):
+        if isinstance(result, AssetInDB):
             return_assets.append(result)
             image_dict["__image_url__"] = result.path
         else:
@@ -61,7 +61,7 @@ async def process_old_and_new_slides_and_fetch_assets(
     image_generation_service: ImageGenerationService,
     old_slide_content: dict,
     new_slide_content: dict,
-) -> List[ImageAsset]:
+) -> List[AssetInDB]:
     # Finds all old images
     old_image_dict_paths = get_dict_paths_with_key(
         old_slide_content, "__image_prompt__"
@@ -150,7 +150,7 @@ async def process_old_and_new_slides_and_fetch_assets(
     for i, new_image in enumerate(new_images):
         if new_images_fetch_status[i]:
             fetched_image = new_images[i]
-            if isinstance(fetched_image, ImageAsset):
+            if isinstance(fetched_image, AssetInDB):
                 new_assets.append(fetched_image)
                 image_url = fetched_image.path
             else:
@@ -170,7 +170,7 @@ async def process_old_and_new_slides_and_fetch_assets(
     return new_assets
 
 
-def process_slide_add_placeholder_assets(slide: SlideModel):
+def process_slide_add_placeholder_assets(slide: SlideInDB):
 
     image_paths = get_dict_paths_with_key(slide.content, "__image_prompt__")
     icon_paths = get_dict_paths_with_key(slide.content, "__icon_query__")

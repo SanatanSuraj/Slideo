@@ -4,7 +4,7 @@ import uuid
 
 from pydantic import BaseModel
 
-from models.sql.slide import SlideModel
+from models.mongo.slide import SlideInDB
 
 
 class PresentationWithSlides(BaseModel):
@@ -17,4 +17,4 @@ class PresentationWithSlides(BaseModel):
     updated_at: datetime
     tone: Optional[str] = None
     verbosity: Optional[str] = None
-    slides: List[SlideModel]
+    slides: List[SlideInDB]

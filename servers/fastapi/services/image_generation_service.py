@@ -5,7 +5,7 @@ from google import genai
 from google.genai.types import GenerateContentConfig
 from openai import AsyncOpenAI
 from models.image_prompt import ImagePrompt
-from models.sql.image_asset import ImageAsset
+from models.mongo.asset import AssetInDB
 from utils.download_helpers import download_file
 from utils.get_env import get_pexels_api_key_env
 from utils.get_env import get_pixabay_api_key_env
@@ -38,7 +38,7 @@ class ImageGenerationService:
     def is_stock_provider_selected(self):
         return is_pixels_selected() or is_pixabay_selected()
 
-    async def generate_image(self, prompt: ImagePrompt) -> str | ImageAsset:
+    async def generate_image(self, prompt: ImagePrompt) -> str | AssetInDB:
         """
         Generates an image based on the provided prompt.
         - If no image generation function is available, returns a placeholder image.
@@ -66,7 +66,7 @@ class ImageGenerationService:
                 if image_path.startswith("http"):
                     return image_path
                 elif os.path.exists(image_path):
-                    return ImageAsset(
+                    return AssetInDB(
                         path=image_path,
                         is_uploaded=False,
                         extras={

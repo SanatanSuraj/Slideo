@@ -5,8 +5,11 @@ def get_can_change_keys_env():
     return os.getenv("CAN_CHANGE_KEYS")
 
 
-def get_database_url_env():
-    return os.getenv("DATABASE_URL")
+def get_mongodb_uri_env():
+    return os.getenv("MONGODB_URI")
+
+def get_mongodb_database_env():
+    return os.getenv("MONGODB_DATABASE")
 
 
 def get_app_data_directory_env():

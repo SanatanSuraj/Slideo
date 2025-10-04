@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from models.llm_message import LLMSystemMessage, LLMUserMessage
 from models.presentation_layout import SlideLayoutModel
-from models.sql.slide import SlideModel
+from models.mongo.slide import SlideInDB
 from services.llm_client import LLMClient
 from utils.llm_client_error_handler import handle_llm_client_exceptions
 from utils.llm_provider import get_model
@@ -78,7 +78,7 @@ def get_messages(
 
 async def get_edited_slide_content(
     prompt: str,
-    slide: SlideModel,
+    slide: SlideInDB,
     language: str,
     slide_layout: SlideLayoutModel,
     tone: Optional[str] = None,

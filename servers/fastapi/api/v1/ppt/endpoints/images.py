@@ -1,46 +1,48 @@
 from typing import List
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
-
 from models.image_prompt import ImagePrompt
-from models.sql.image_asset import ImageAsset
-from services.database import get_async_session
+from models.mongo.asset import Asset, AssetCreate
+from crud.asset_crud import asset_crud
 from services.image_generation_service import ImageGenerationService
 from utils.asset_directory_utils import get_images_directory
 import os
 import uuid
 from utils.file_utils import get_file_name_with_random_uuid
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 
 IMAGES_ROUTER = APIRouter(prefix="/images", tags=["Images"])
 
 
 @IMAGES_ROUTER.get("/generate")
 async def generate_image(
-    prompt: str, sql_session: AsyncSession = Depends(get_async_session)
+    prompt: str, 
+    current_user: User = Depends(get_current_active_user)
 ):
     images_directory = get_images_directory()
     image_prompt = ImagePrompt(prompt=prompt)
     image_generation_service = ImageGenerationService(images_directory)
 
     image = await image_generation_service.generate_image(image_prompt)
-    if not isinstance(image, ImageAsset):
+    if not isinstance(image, Asset):
         return image
 
-    sql_session.add(image)
-    await sql_session.commit()
+    # Save to MongoDB
+    asset_create = AssetCreate(
+        user_id=str(current_user.id),
+        path=image.path,
+        asset_type="image",
+        is_uploaded=False
+    )
+    await asset_crud.create_asset(asset_create)
 
     return image.path
 
 
-@IMAGES_ROUTER.get("/generated", response_model=List[ImageAsset])
-async def get_generated_images(sql_session: AsyncSession = Depends(get_async_session)):
+@IMAGES_ROUTER.get("/generated", response_model=List[Asset])
+async def get_generated_images(current_user: User = Depends(get_current_active_user)):
     try:
-        images = await sql_session.scalars(
-            select(ImageAsset)
-            .where(ImageAsset.is_uploaded == False)
-            .order_by(ImageAsset.created_at.desc())
-        )
+        images = await asset_crud.get_assets_by_user_and_type(str(current_user.id), "image", uploaded=False)
         return images
     except Exception as e:
         raise HTTPException(
@@ -50,7 +52,8 @@ async def get_generated_images(sql_session: AsyncSession = Depends(get_async_ses
 
 @IMAGES_ROUTER.post("/upload")
 async def upload_image(
-    file: UploadFile = File(...), sql_session: AsyncSession = Depends(get_async_session)
+    file: UploadFile = File(...), 
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         new_filename = get_file_name_with_random_uuid(file)
@@ -61,24 +64,24 @@ async def upload_image(
         with open(image_path, "wb") as f:
             f.write(await file.read())
 
-        image_asset = ImageAsset(path=image_path, is_uploaded=True)
-
-        sql_session.add(image_asset)
-        await sql_session.commit()
+        asset_create = AssetCreate(
+            user_id=str(current_user.id),
+            path=image_path,
+            asset_type="image",
+            is_uploaded=True
+        )
+        asset_id = await asset_crud.create_asset(asset_create)
+        image_asset = await asset_crud.get_asset_by_id(asset_id)
 
         return image_asset
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 
-@IMAGES_ROUTER.get("/uploaded", response_model=List[ImageAsset])
-async def get_uploaded_images(sql_session: AsyncSession = Depends(get_async_session)):
+@IMAGES_ROUTER.get("/uploaded", response_model=List[Asset])
+async def get_uploaded_images(current_user: User = Depends(get_current_active_user)):
     try:
-        images = await sql_session.scalars(
-            select(ImageAsset)
-            .where(ImageAsset.is_uploaded == True)
-            .order_by(ImageAsset.created_at.desc())
-        )
+        images = await asset_crud.get_assets_by_user_and_type(str(current_user.id), "image", uploaded=True)
         return images
     except Exception as e:
         raise HTTPException(
@@ -88,18 +91,21 @@ async def get_uploaded_images(sql_session: AsyncSession = Depends(get_async_sess
 
 @IMAGES_ROUTER.delete("/{id}", status_code=204)
 async def delete_uploaded_image_by_id(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID, 
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         # Fetch the asset to get its actual file path
-        image = await sql_session.get(ImageAsset, id)
+        image = await asset_crud.get_asset_by_id(str(id))
         if not image:
             raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Check if user owns the asset
+        if image.user_id != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized to delete this image")
 
         os.remove(image.path)
-
-        await sql_session.delete(image)
-        await sql_session.commit()
+        await asset_crud.delete_asset(str(id))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")

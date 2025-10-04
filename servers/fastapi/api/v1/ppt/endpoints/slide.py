@@ -1,18 +1,19 @@
 from typing import Annotated, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 
-from models.sql.presentation import PresentationModel
-from models.sql.slide import SlideModel
-from services.database import get_async_session
+from models.mongo.presentation import Presentation
+from models.mongo.slide import Slide, SlideUpdate
+from crud.presentation_crud import presentation_crud
+from crud.slide_crud import slide_crud
 from services.image_generation_service import ImageGenerationService
 from utils.asset_directory_utils import get_images_directory
 from utils.llm_calls.edit_slide import get_edited_slide_content
 from utils.llm_calls.edit_slide_html import get_edited_slide_html
 from utils.llm_calls.select_slide_type_on_edit import get_slide_layout_from_prompt
 from utils.process_slides import process_old_and_new_slides_and_fetch_assets
-import uuid
+from auth.dependencies import get_current_active_user
+from models.mongo.user import User
 
 
 SLIDE_ROUTER = APIRouter(prefix="/slide", tags=["Slide"])
@@ -22,12 +23,13 @@ SLIDE_ROUTER = APIRouter(prefix="/slide", tags=["Slide"])
 async def edit_slide(
     id: Annotated[uuid.UUID, Body()],
     prompt: Annotated[str, Body()],
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
-    slide = await sql_session.get(SlideModel, id)
+    slide = await slide_crud.get_slide_by_id(str(id))
     if not slide:
         raise HTTPException(status_code=404, detail="Slide not found")
-    presentation = await sql_session.get(PresentationModel, slide.presentation)
+    
+    presentation = await presentation_crud.get_presentation_by_id(slide.presentation_id)
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
@@ -49,27 +51,29 @@ async def edit_slide(
         edited_slide_content,
     )
 
-    # Always assign a new unique id to the slide
-    slide.id = uuid.uuid4()
+    # Update slide with new content
+    slide_update = SlideUpdate(
+        content=edited_slide_content,
+        layout=slide_layout.id,
+        notes=edited_slide_content.get("__speaker_note__", "")
+    )
+    
+    updated_slide = await slide_crud.update_slide(slide.id, slide_update)
+    
+    # TODO: Handle new assets in MongoDB
+    # For now, we'll skip the assets part as it requires more complex migration
 
-    sql_session.add(slide)
-    slide.content = edited_slide_content
-    slide.layout = slide_layout.id
-    slide.speaker_note = edited_slide_content.get("__speaker_note__", "")
-    sql_session.add_all(new_assets)
-    await sql_session.commit()
-
-    return slide
+    return updated_slide
 
 
-@SLIDE_ROUTER.post("/edit-html", response_model=SlideModel)
+@SLIDE_ROUTER.post("/edit-html", response_model=Slide)
 async def edit_slide_html(
     id: Annotated[uuid.UUID, Body()],
     prompt: Annotated[str, Body()],
     html: Annotated[Optional[str], Body()] = None,
-    sql_session: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
-    slide = await sql_session.get(SlideModel, id)
+    slide = await slide_crud.get_slide_by_id(str(id))
     if not slide:
         raise HTTPException(status_code=404, detail="Slide not found")
 
@@ -79,12 +83,11 @@ async def edit_slide_html(
 
     edited_slide_html = await get_edited_slide_html(prompt, html_to_edit)
 
-    # Always assign a new unique id to the slide
-    # This is to ensure that the nextjs can track slide updates
-    slide.id = uuid.uuid4()
+    # Update slide with new HTML content
+    slide_update = SlideUpdate(
+        content={"html_content": edited_slide_html}
+    )
+    
+    updated_slide = await slide_crud.update_slide(slide.id, slide_update)
 
-    sql_session.add(slide)
-    slide.html_content = edited_slide_html
-    await sql_session.commit()
-
-    return slide
+    return updated_slide

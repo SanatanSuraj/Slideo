@@ -18,3 +18,8 @@ chroma
 container.db
 .next-build
 .cursor
+# MongoDB
+*.db
+data/
+mongodb-data/
+.env.local
