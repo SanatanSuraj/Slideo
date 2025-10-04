@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
 from datetime import datetime
 from bson import ObjectId
@@ -10,7 +10,13 @@ class UserBase(BaseModel):
     is_active: bool = True
 
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None
+    
+    @validator('password')
+    def validate_password_length(cls, v):
+        if v is not None and len(v.encode('utf-8')) > 72:
+            raise ValueError('Password cannot be longer than 72 bytes')
+        return v
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None

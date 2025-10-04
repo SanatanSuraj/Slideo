@@ -61,20 +61,22 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
             return;
           }
         }
-        if (route === '/') {
+        // Don't redirect if user is on auth pages
+        if (route === '/' && !route.startsWith('/auth/')) {
           router.push('/upload');
           setLoadingToFalseAfterNavigatingTo('/upload');
         } else {
           setIsLoading(false);
         }
-      } else if (route !== '/') {
+      } else if (route !== '/' && !route.startsWith('/auth/') && route !== '/upload') {
         router.push('/');
         setLoadingToFalseAfterNavigatingTo('/');
       } else {
         setIsLoading(false);
       }
     } else {
-      if (route === '/') {
+      // Don't redirect if user is on auth pages
+      if (route === '/' && !route.startsWith('/auth/')) {
         router.push('/upload');
         setLoadingToFalseAfterNavigatingTo('/upload');
       } else {

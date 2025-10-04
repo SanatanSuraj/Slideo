@@ -5,7 +5,8 @@ from passlib.context import CryptContext
 from models.mongo.user import User, UserCreate, UserUpdate, UserInDB
 from db.mongo import get_users_collection
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use a more compatible password hashing scheme
+pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 class UserCRUD:
     def __init__(self):
@@ -19,7 +20,20 @@ class UserCRUD:
     
     async def create_user(self, user: UserCreate) -> str:
         """Create a new user"""
-        hashed_password = pwd_context.hash(user.password)
+        # Handle optional password (for OAuth users)
+        if user.password:
+            # Truncate password to 72 bytes for bcrypt compatibility
+            password_bytes = user.password.encode('utf-8')
+            if len(password_bytes) > 72:
+                # Truncate to 72 bytes and decode back to string
+                password = password_bytes[:72].decode('utf-8', errors='ignore')
+            else:
+                password = user.password
+            hashed_password = pwd_context.hash(password)
+        else:
+            # For OAuth users or users without passwords, create a random hash
+            hashed_password = pwd_context.hash("oauth_user")
+        
         user_data = {
             "email": user.email,
             "name": user.name,

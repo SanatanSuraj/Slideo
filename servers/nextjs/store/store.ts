@@ -4,12 +4,14 @@ import presentationGenerationReducer from "./slices/presentationGeneration";
 import pptGenUploadReducer from "./slices/presentationGenUpload";
 import userConfigReducer from "./slices/userConfig";
 import undoRedoReducer from "./slices/undoRedoSlice";
+import authReducer from "./slices/authSlice";
 export const store = configureStore({
   reducer: {
     presentationGeneration: presentationGenerationReducer,
     pptGenUpload: pptGenUploadReducer,
     userConfig: userConfigReducer,
     undoRedo: undoRedoReducer,
+    auth: authReducer,
   },
 });
 

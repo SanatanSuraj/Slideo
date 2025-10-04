@@ -1,8 +1,31 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { Github, Cloud, Star, Calendar, ArrowRight, Check, ChevronRight, ChevronDown } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useSelector, useDispatch } from 'react-redux';
+import { Github, Cloud, Star, Calendar, ArrowRight, Check, ChevronRight, ChevronDown, LogOut } from 'lucide-react';
+import { RootState } from '../store/store';
+import { logout } from '../store/slices/authSlice';
 
 export default function HomePage() {
+    const router = useRouter();
+    const dispatch = useDispatch();
+    const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
+
+    const handleGetPPT = () => {
+        if (!isAuthenticated) {
+            router.push('/auth/login');
+        } else {
+            router.push('/upload');
+        }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('authToken');
+        dispatch(logout());
+    };
+
     return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -22,9 +45,22 @@ export default function HomePage() {
             <Calendar className="w-4 h-4" />
             <span>Book Call</span>
           </Link>
-          <button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg font-medium">
-            Login
-          </button>
+          {isAuthenticated ? (
+            <div className="flex items-center space-x-4">
+              <span className="text-gray-700">Welcome, {user?.name}</span>
+              <button 
+                onClick={handleLogout}
+                className="flex items-center space-x-1 bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </button>
+            </div>
+          ) : (
+            <Link href="/auth/login" className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg font-medium">
+              Login
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -49,14 +85,17 @@ export default function HomePage() {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Link href="/upload" className="flex items-center justify-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+            <button 
+              onClick={handleGetPPT}
+              className="flex items-center justify-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors"
+            >
               <Cloud className="w-5 h-5" />
               <span>Get your PPT</span>
               <ArrowRight className="w-4 h-4" />
-            </Link>
+            </button>
             <Link href="/template-preview" className="flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-colors">
               <Github className="w-5 h-5" />
-              <span>View Templates</span>
+              <span>Get Landing Page</span>
               <Star className="w-4 h-4" />
             </Link>
           </div>

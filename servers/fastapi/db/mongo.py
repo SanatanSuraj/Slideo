@@ -59,6 +59,8 @@ def get_database():
 
 # Collection references
 def get_users_collection():
+    if db is None:
+        raise Exception("MongoDB not initialized. Call connect_to_mongo() first.")
     return db.users
 
 def get_presentations_collection():
