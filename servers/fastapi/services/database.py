@@ -13,7 +13,6 @@ from models.sql.async_presentation_generation_status import (
 )
 from models.sql.image_asset import ImageAsset
 from models.sql.key_value import KeyValueSqlModel
-from models.sql.ollama_pull_status import OllamaPullStatus
 from models.sql.presentation import PresentationModel
 from models.sql.slide import SlideModel
 from models.sql.presentation_layout_code import PresentationLayoutCodeModel
@@ -67,10 +66,8 @@ async def create_db_and_tables():
             )
         )
 
-    async with container_db_engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: SQLModel.metadata.create_all(
-                sync_conn,
-                tables=[OllamaPullStatus.__table__],
-            )
-        )
+    # Container database tables creation (if needed)
+    # async with container_db_engine.begin() as conn:
+    #     await conn.run_sync(
+    #         lambda sync_conn: SQLModel.metadata.create_all(sync_conn)
+    #     )

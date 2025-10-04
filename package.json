@@ -2,5 +2,10 @@
   "name": "presenton",
   "version": "1.0.0",
   "type": "module",
-  "description": "Open-source AI presentation generator"
+  "description": "Open-source AI presentation generator",
+  "scripts": {
+    "start": "node start-local.js",
+    "dev": "node start-local.js --dev",
+    "install-deps": "cd servers/nextjs && npm install && cd ../fastapi && pip install -r requirements.txt"
+  }
 }

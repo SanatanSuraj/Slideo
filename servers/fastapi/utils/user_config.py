@@ -12,8 +12,6 @@ from utils.get_env import (
     get_google_api_key_env,
     get_google_model_env,
     get_llm_provider_env,
-    get_ollama_model_env,
-    get_ollama_url_env,
     get_openai_api_key_env,
     get_openai_model_env,
     get_pexels_api_key_env,
@@ -36,8 +34,6 @@ from utils.set_env import (
     set_google_api_key_env,
     set_google_model_env,
     set_llm_provider_env,
-    set_ollama_model_env,
-    set_ollama_url_env,
     set_openai_api_key_env,
     set_openai_model_env,
     set_pexels_api_key_env,
@@ -69,8 +65,6 @@ def get_user_config():
         ANTHROPIC_API_KEY=existing_config.ANTHROPIC_API_KEY
         or get_anthropic_api_key_env(),
         ANTHROPIC_MODEL=existing_config.ANTHROPIC_MODEL or get_anthropic_model_env(),
-        OLLAMA_URL=existing_config.OLLAMA_URL or get_ollama_url_env(),
-        OLLAMA_MODEL=existing_config.OLLAMA_MODEL or get_ollama_model_env(),
         CUSTOM_LLM_URL=existing_config.CUSTOM_LLM_URL or get_custom_llm_url_env(),
         CUSTOM_LLM_API_KEY=existing_config.CUSTOM_LLM_API_KEY
         or get_custom_llm_api_key_env(),
@@ -117,10 +111,6 @@ def update_env_with_user_config():
         set_anthropic_api_key_env(user_config.ANTHROPIC_API_KEY)
     if user_config.ANTHROPIC_MODEL:
         set_anthropic_model_env(user_config.ANTHROPIC_MODEL)
-    if user_config.OLLAMA_URL:
-        set_ollama_url_env(user_config.OLLAMA_URL)
-    if user_config.OLLAMA_MODEL:
-        set_ollama_model_env(user_config.OLLAMA_MODEL)
     if user_config.CUSTOM_LLM_URL:
         set_custom_llm_url_env(user_config.CUSTOM_LLM_URL)
     if user_config.CUSTOM_LLM_API_KEY:

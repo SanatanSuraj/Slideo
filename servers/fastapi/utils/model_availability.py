@@ -1,4 +1,3 @@
-from constants.supported_ollama_models import SUPPORTED_OLLAMA_MODELS
 from constants.llm import OPENAI_URL
 from enums.image_provider import ImageProvider
 from enums.llm_provider import LLMProvider
@@ -18,16 +17,13 @@ from utils.get_env import (
     get_pexels_api_key_env,
 )
 from utils.get_env import get_google_api_key_env
-from utils.get_env import get_ollama_model_env
 from utils.get_env import get_custom_llm_api_key_env
 from utils.get_env import get_custom_llm_url_env
 from utils.get_env import get_custom_model_env
 from utils.llm_provider import (
     get_llm_provider,
     is_custom_llm_selected,
-    is_ollama_selected,
 )
-from utils.ollama import pull_ollama_model
 from utils.image_provider import get_selected_image_provider
 
 
@@ -74,20 +70,6 @@ async def check_llm_and_image_provider_api_or_model_availability():
                     print("Available models: ", available_models)
                     raise Exception(f"Model {anthropic_model} is not available")
 
-        elif is_ollama_selected():
-            ollama_model = get_ollama_model_env()
-            if not ollama_model:
-                raise Exception("OLLAMA_MODEL must be provided")
-
-            if ollama_model not in SUPPORTED_OLLAMA_MODELS:
-                raise Exception(f"Model {ollama_model} is not supported")
-
-            print("-" * 50)
-            print("Pulling model: ", ollama_model)
-            async for event in pull_ollama_model(ollama_model):
-                print(event)
-            print("Pulled model: ", ollama_model)
-            print("-" * 50)
 
         elif is_custom_llm_selected():
             custom_model = get_custom_model_env()

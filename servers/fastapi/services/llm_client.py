@@ -48,7 +48,6 @@ from utils.get_env import (
     get_custom_llm_url_env,
     get_disable_thinking_env,
     get_google_api_key_env,
-    get_ollama_url_env,
     get_openai_api_key_env,
     get_tool_calls_env,
     get_web_grounding_env,
@@ -76,10 +75,7 @@ class LLMClient:
 
     # ? Web Grounding
     def enable_web_grounding(self) -> bool:
-        if (
-            self.llm_provider == LLMProvider.OLLAMA
-            or self.llm_provider == LLMProvider.CUSTOM
-        ):
+        if self.llm_provider == LLMProvider.CUSTOM:
             return False
         return parse_bool_or_none(get_web_grounding_env()) or False
 
@@ -96,14 +92,12 @@ class LLMClient:
                 return self._get_google_client()
             case LLMProvider.ANTHROPIC:
                 return self._get_anthropic_client()
-            case LLMProvider.OLLAMA:
-                return self._get_ollama_client()
             case LLMProvider.CUSTOM:
                 return self._get_custom_client()
             case _:
                 raise HTTPException(
                     status_code=400,
-                    detail="LLM Provider must be either openai, google, anthropic, ollama, or custom",
+                    detail="LLM Provider must be either openai, google, anthropic, or custom",
                 )
 
     def _get_openai_client(self):
@@ -130,11 +124,6 @@ class LLMClient:
             )
         return AsyncAnthropic()
 
-    def _get_ollama_client(self):
-        return AsyncOpenAI(
-            base_url=(get_ollama_url_env() or "http://localhost:11434") + "/v1",
-            api_key="ollama",
-        )
 
     def _get_custom_client(self):
         if not get_custom_llm_url_env():
@@ -370,16 +359,6 @@ class LLMClient:
 
         return text_content
 
-    async def _generate_ollama(
-        self,
-        model: str,
-        messages: List[LLMMessage],
-        max_tokens: Optional[int] = None,
-        depth: int = 0,
-    ):
-        return await self._generate_openai(
-            model=model, messages=messages, max_tokens=max_tokens, depth=depth
-        )
 
     async def _generate_custom(
         self,
@@ -428,10 +407,6 @@ class LLMClient:
                     messages=messages,
                     max_tokens=max_tokens,
                     tools=parsed_tools,
-                )
-            case LLMProvider.OLLAMA:
-                content = await self._generate_ollama(
-                    model=model, messages=messages, max_tokens=max_tokens
                 )
             case LLMProvider.CUSTOM:
                 content = await self._generate_custom(
@@ -728,23 +703,6 @@ class LLMClient:
 
         return None
 
-    async def _generate_ollama_structured(
-        self,
-        model: str,
-        messages: List[LLMMessage],
-        response_format: dict,
-        strict: bool = False,
-        max_tokens: Optional[int] = None,
-        depth: int = 0,
-    ):
-        return await self._generate_openai_structured(
-            model=model,
-            messages=messages,
-            response_format=response_format,
-            strict=strict,
-            max_tokens=max_tokens,
-            depth=depth,
-        )
 
     async def _generate_custom_structured(
         self,
@@ -802,14 +760,6 @@ class LLMClient:
                     messages=messages,
                     response_format=response_format,
                     tools=parsed_tools,
-                    max_tokens=max_tokens,
-                )
-            case LLMProvider.OLLAMA:
-                content = await self._generate_ollama_structured(
-                    model=model,
-                    messages=messages,
-                    response_format=response_format,
-                    strict=strict,
                     max_tokens=max_tokens,
                 )
             case LLMProvider.CUSTOM:
@@ -1061,16 +1011,6 @@ class LLMClient:
             ):
                 yield event
 
-    def _stream_ollama(
-        self,
-        model: str,
-        messages: List[LLMMessage],
-        max_tokens: Optional[int] = None,
-        depth: int = 0,
-    ):
-        return self._stream_openai(
-            model=model, messages=messages, max_tokens=max_tokens, depth=depth
-        )
 
     def _stream_custom(
         self,
@@ -1118,10 +1058,6 @@ class LLMClient:
                     messages=messages,
                     max_tokens=max_tokens,
                     tools=parsed_tools,
-                )
-            case LLMProvider.OLLAMA:
-                return self._stream_ollama(
-                    model=model, messages=messages, max_tokens=max_tokens
                 )
             case LLMProvider.CUSTOM:
                 return self._stream_custom(
@@ -1472,23 +1408,6 @@ class LLMClient:
             ):
                 yield event
 
-    def _stream_ollama_structured(
-        self,
-        model: str,
-        messages: List[LLMMessage],
-        response_format: dict,
-        strict: bool = False,
-        max_tokens: Optional[int] = None,
-        depth: int = 0,
-    ):
-        return self._stream_openai_structured(
-            model=model,
-            messages=messages,
-            response_format=response_format,
-            strict=strict,
-            max_tokens=max_tokens,
-            depth=depth,
-        )
 
     def _stream_custom_structured(
         self,
@@ -1545,14 +1464,6 @@ class LLMClient:
                     messages=messages,
                     response_format=response_format,
                     tools=parsed_tools,
-                    max_tokens=max_tokens,
-                )
-            case LLMProvider.OLLAMA:
-                return self._stream_ollama_structured(
-                    model=model,
-                    messages=messages,
-                    response_format=response_format,
-                    strict=strict,
                     max_tokens=max_tokens,
                 )
             case LLMProvider.CUSTOM:

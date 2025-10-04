@@ -79,11 +79,6 @@ export const LLM_PROVIDERS: Record<string, LLMProviderOption> = {
     label: "Anthropic",
     description: "Anthropic's Claude models",
   },
-  ollama: {
-    value: "ollama",
-    label: "Ollama",
-    description: "Ollama's primary text generation model",
-  },
   custom: {
     value: "custom",
     label: "Custom",

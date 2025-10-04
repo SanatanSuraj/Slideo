@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userConfigPath = process.env.USER_CONFIG_PATH;
+  // Check for any available API key from environment variables
+  const openaiKey = process.env.OPENAI_API_KEY || "";
+  const googleKey = process.env.GOOGLE_API_KEY || "";
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || "";
+  
+  const hasKey = Boolean(
+    openaiKey.trim() || 
+    googleKey.trim() || 
+    anthropicKey.trim()
+  );
 
-  let keyFromFile = "";
-  if (userConfigPath && fs.existsSync(userConfigPath)) {
-    try {
-      const raw = fs.readFileSync(userConfigPath, "utf-8");
-      const cfg = JSON.parse(raw || "{}");
-      keyFromFile = cfg?.OPENAI_API_KEY || "";
-    } catch {}
-  }
-
-  console.log(keyFromFile);
-
-  const keyFromEnv = process.env.OPENAI_API_KEY || "";
-  console.log(keyFromEnv);
-  const hasKey = Boolean((keyFromFile || keyFromEnv).trim());
-
-  return NextResponse.json({ hasKey });
+  return NextResponse.json({ 
+    hasKey,
+    providers: {
+      openai: Boolean(openaiKey.trim()),
+      google: Boolean(googleKey.trim()),
+      anthropic: Boolean(anthropicKey.trim())
+    }
+  });
 } 
