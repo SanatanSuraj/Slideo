@@ -5,6 +5,7 @@ import math
 import os
 import random
 import traceback
+import logging
 from typing import Annotated, List, Literal, Optional, Tuple
 import dirtyjson
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path
@@ -66,18 +67,20 @@ from utils.process_slides import (
 )
 import uuid
 
+# Set up logger
+logger = logging.getLogger(__name__)
 
 PRESENTATION_ROUTER = APIRouter(prefix="/presentation", tags=["Presentation"])
 
 
 @PRESENTATION_ROUTER.get("/all", response_model=List[PresentationWithSlides])
 async def get_all_presentations(current_user: User = Depends(get_current_active_user)):
-    presentations = await presentation_crud.get_presentations_by_user_id(str(current_user.id))
+    presentations = await presentation_crud.get_presentations_by_user(str(current_user.id))
     presentations_with_slides = []
     
     for presentation in presentations:
         # Get first slide for each presentation
-        slides = await slide_crud.get_slides_by_presentation_id(presentation.id)
+        slides = await slide_crud.get_slides_by_presentation(presentation.id)
         first_slide = slides[0] if slides else None
         
         presentations_with_slides.append(
@@ -92,10 +95,10 @@ async def get_all_presentations(current_user: User = Depends(get_current_active_
 
 @PRESENTATION_ROUTER.get("/{id}", response_model=PresentationWithSlides)
 async def get_presentation(
-    id: uuid.UUID, 
+    id: str, 
     current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await presentation_crud.get_presentation_by_id(str(id))
+    presentation = await presentation_crud.get_presentation_by_id(id)
     if not presentation:
         raise HTTPException(404, "Presentation not found")
     
@@ -103,7 +106,7 @@ async def get_presentation(
     if presentation.user_id != str(current_user.id):
         raise HTTPException(403, "Not authorized to view this presentation")
     
-    slides = await slide_crud.get_slides_by_presentation_id(str(id))
+    slides = await slide_crud.get_slides_by_presentation(id)
     return PresentationWithSlides(
         **presentation.dict(),
         slides=slides,
@@ -112,10 +115,10 @@ async def get_presentation(
 
 @PRESENTATION_ROUTER.delete("/{id}", status_code=204)
 async def delete_presentation(
-    id: uuid.UUID, 
+    id: str, 
     current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await presentation_crud.get_presentation_by_id(str(id))
+    presentation = await presentation_crud.get_presentation_by_id(id)
     if not presentation:
         raise HTTPException(404, "Presentation not found")
     
@@ -123,7 +126,7 @@ async def delete_presentation(
     if presentation.user_id != str(current_user.id):
         raise HTTPException(403, "Not authorized to delete this presentation")
 
-    await presentation_crud.delete_presentation(str(id))
+    await presentation_crud.delete_presentation(id)
 
 
 @PRESENTATION_ROUTER.post("/create", response_model=Presentation)
@@ -140,33 +143,98 @@ async def create_presentation(
     web_search: Annotated[bool, Body()] = False,
     current_user: User = Depends(get_current_active_user)
 ):
+    try:
+        # Log incoming request details
+        logger.info(f"📝 Creating presentation for user: {current_user.id}")
+        logger.info(f"📝 Request payload: content='{content[:50]}...', n_slides={n_slides}, language={language}")
+        logger.info(f"📝 User details: id={current_user.id}, email={getattr(current_user, 'email', 'N/A')}")
+        
+        # Validate input parameters
+        if include_table_of_contents and n_slides < 3:
+            logger.warning(f"❌ Invalid request: Table of contents requires 3+ slides, got {n_slides}")
+            raise HTTPException(
+                status_code=400,
+                detail="Number of slides cannot be less than 3 if table of contents is included",
+            )
 
-    if include_table_of_contents and n_slides < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Number of slides cannot be less than 3 if table of contents is included",
+        # Check MongoDB connection
+        try:
+            from db.mongo import client
+            if client:
+                await client.server_info()
+                logger.info("✅ MongoDB connection verified")
+            else:
+                logger.error("❌ MongoDB client is None")
+                raise HTTPException(status_code=500, detail="Database connection not available")
+        except Exception as e:
+            logger.error(f"❌ MongoDB connection check failed: {e}")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        # Check LLM provider configuration
+        llm_provider = os.getenv("LLM", "").lower()
+        if llm_provider == "openai":
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if not openai_key:
+                logger.error("❌ OPENAI_API_KEY not found in environment")
+                raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+            logger.info("✅ OpenAI configuration verified")
+        elif llm_provider == "google":
+            google_key = os.getenv("GOOGLE_API_KEY")
+            if not google_key:
+                logger.error("❌ GOOGLE_API_KEY not found in environment")
+                raise HTTPException(status_code=500, detail="Google API key not configured")
+            logger.info("✅ Google configuration verified")
+        else:
+            logger.warning(f"⚠️ Unknown LLM provider: {llm_provider}")
+
+        # Generate presentation ID
+        presentation_id = str(uuid.uuid4())
+        logger.info(f"📝 Generated presentation ID: {presentation_id}")
+
+        # Create presentation object
+        presentation_create = PresentationCreate(
+            user_id=str(current_user.id),
+            content=content,
+            n_slides=n_slides,
+            language=language,
+            file_paths=file_paths,
+            tone=tone.value,
+            verbosity=verbosity.value,
+            instructions=instructions,
+            include_table_of_contents=include_table_of_contents,
+            include_title_slide=include_title_slide,
+            web_search=web_search,
         )
 
-    presentation_id = str(uuid.uuid4())
+        logger.info("📝 Creating presentation in database...")
+        created_presentation_id = await presentation_crud.create_presentation(presentation_create)
+        logger.info(f"✅ Presentation created with ID: {created_presentation_id}")
 
-    presentation_create = PresentationCreate(
-        user_id=str(current_user.id),
-        content=content,
-        n_slides=n_slides,
-        language=language,
-        file_paths=file_paths,
-        tone=tone.value,
-        verbosity=verbosity.value,
-        instructions=instructions,
-        include_table_of_contents=include_table_of_contents,
-        include_title_slide=include_title_slide,
-        web_search=web_search,
-    )
+        logger.info("📝 Retrieving created presentation...")
+        presentation = await presentation_crud.get_presentation_by_id(created_presentation_id)
+        logger.info(f"✅ Presentation retrieved successfully: {presentation.id}")
 
-    created_presentation_id = await presentation_crud.create_presentation(presentation_create)
-    presentation = await presentation_crud.get_presentation_by_id(created_presentation_id)
+        return presentation
 
-    return presentation
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are already properly formatted
+        raise
+    except Exception as e:
+        # Log full exception details
+        logger.error(f"❌ Internal server error in create_presentation: {str(e)}")
+        logger.error(f"❌ Exception type: {type(e).__name__}")
+        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+        
+        # Log request context for debugging
+        logger.error(f"❌ Request context - User ID: {current_user.id if current_user else 'None'}")
+        logger.error(f"❌ Request context - Content length: {len(content) if content else 0}")
+        logger.error(f"❌ Request context - N slides: {n_slides}")
+        
+        # Return 500 with error details
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @PRESENTATION_ROUTER.post("/prepare", response_model=Presentation)
@@ -263,9 +331,9 @@ async def prepare_presentation(
 
 @PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationWithSlides)
 async def stream_presentation(
-    id: uuid.UUID, current_user: User = Depends(get_current_active_user)
+    id: str, current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await presentation_crud.get_presentation_by_id(str(id))
+    presentation = await presentation_crud.get_presentation_by_id(id)
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
     if not presentation.structure:
@@ -553,9 +621,27 @@ async def generate_presentation_handler(
                 presentation_outlines_text += chunk
 
             try:
-                presentation_outlines_json = dict(
-                    dirtyjson.loads(presentation_outlines_text)
-                )
+                # Add defensive logging
+                print("🧠 Raw Gemini output:", presentation_outlines_text[:200] + "..." if len(presentation_outlines_text) > 200 else presentation_outlines_text)
+                
+                # Try to parse as JSON first
+                try:
+                    presentation_outlines_json = dict(
+                        dirtyjson.loads(presentation_outlines_text)
+                    )
+                except Exception as json_error:
+                    print("⚠️ JSON parsing failed, attempting to wrap as plain text outline")
+                    # If JSON parsing fails, wrap the text as a basic outline structure
+                    presentation_outlines_json = {
+                        "slides": [
+                            {
+                                "title": "Generated Outline",
+                                "content": presentation_outlines_text
+                            }
+                        ]
+                    }
+                    print("✅ Wrapped plain text as outline structure")
+                    
             except Exception as e:
                 traceback.print_exc()
                 raise HTTPException(
@@ -871,7 +957,7 @@ async def edit_presentation_with_new_content(
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    slides = await slide_crud.get_slides_by_presentation_id(str(data.presentation_id))
+    slides = await slide_crud.get_slides_by_presentation(str(data.presentation_id))
 
     new_slides = []
     slides_to_delete = []
@@ -911,7 +997,7 @@ async def derive_presentation_from_existing_one(
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    slides = await slide_crud.get_slides_by_presentation_id(str(data.presentation_id))
+    slides = await slide_crud.get_slides_by_presentation(str(data.presentation_id))
 
     new_presentation = presentation.get_new_presentation()
     new_slides = []

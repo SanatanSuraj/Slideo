@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.lifespan import app_lifespan
@@ -9,6 +11,9 @@ from api.v1.auth.router import router as auth_router
 from api.v1.presentations.router import router as presentations_router
 from api.v1.slides.router import router as slides_router
 from api.v1.db_status import router as db_status_router
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 app = FastAPI(lifespan=app_lifespan)

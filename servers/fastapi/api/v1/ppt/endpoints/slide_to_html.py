@@ -447,9 +447,32 @@ async def convert_slide_to_html(request: SlideToHtmlRequest):
         SlideToHtmlResponse with generated HTML
     """
     try:
-        # Get OpenAI API key from environment
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Get API key based on configured LLM provider
+        from utils.llm_provider import get_llm_provider
+        from utils.get_env import get_openai_api_key_env, get_google_api_key_env
+        
+        llm_provider = get_llm_provider()
+        if llm_provider.value == "openai":
+            api_key = get_openai_api_key_env()
+        elif llm_provider.value == "google":
+            api_key = get_google_api_key_env()
+        else:
+            raise HTTPException(
+                status_code=500, detail="Unsupported LLM provider for slide to HTML conversion"
+            )
         if not api_key:
+            if llm_provider.value == "openai":
+                raise HTTPException(
+                    status_code=500, detail="OPENAI_API_KEY environment variable not set"
+                )
+            elif llm_provider.value == "google":
+                raise HTTPException(
+                    status_code=500, detail="GOOGLE_API_KEY environment variable not set"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500, detail="API key not set for configured LLM provider"
+                )
             raise HTTPException(
                 status_code=500, detail="OPENAI_API_KEY environment variable not set"
             )
@@ -532,9 +555,32 @@ async def convert_html_to_react(request: HtmlToReactRequest):
         HtmlToReactResponse with generated React component
     """
     try:
-        # Get OpenAI API key from environment
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Get API key based on configured LLM provider
+        from utils.llm_provider import get_llm_provider
+        from utils.get_env import get_openai_api_key_env, get_google_api_key_env
+        
+        llm_provider = get_llm_provider()
+        if llm_provider.value == "openai":
+            api_key = get_openai_api_key_env()
+        elif llm_provider.value == "google":
+            api_key = get_google_api_key_env()
+        else:
+            raise HTTPException(
+                status_code=500, detail="Unsupported LLM provider for slide to HTML conversion"
+            )
         if not api_key:
+            if llm_provider.value == "openai":
+                raise HTTPException(
+                    status_code=500, detail="OPENAI_API_KEY environment variable not set"
+                )
+            elif llm_provider.value == "google":
+                raise HTTPException(
+                    status_code=500, detail="GOOGLE_API_KEY environment variable not set"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500, detail="API key not set for configured LLM provider"
+                )
             raise HTTPException(
                 status_code=500, detail="OPENAI_API_KEY environment variable not set"
             )
@@ -622,9 +668,32 @@ async def edit_html_with_images_endpoint(
         HtmlEditResponse with edited HTML
     """
     try:
-        # Get OpenAI API key from environment
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Get API key based on configured LLM provider
+        from utils.llm_provider import get_llm_provider
+        from utils.get_env import get_openai_api_key_env, get_google_api_key_env
+        
+        llm_provider = get_llm_provider()
+        if llm_provider.value == "openai":
+            api_key = get_openai_api_key_env()
+        elif llm_provider.value == "google":
+            api_key = get_google_api_key_env()
+        else:
+            raise HTTPException(
+                status_code=500, detail="Unsupported LLM provider for slide to HTML conversion"
+            )
         if not api_key:
+            if llm_provider.value == "openai":
+                raise HTTPException(
+                    status_code=500, detail="OPENAI_API_KEY environment variable not set"
+                )
+            elif llm_provider.value == "google":
+                raise HTTPException(
+                    status_code=500, detail="GOOGLE_API_KEY environment variable not set"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500, detail="API key not set for configured LLM provider"
+                )
             raise HTTPException(
                 status_code=500, detail="OPENAI_API_KEY environment variable not set"
             )

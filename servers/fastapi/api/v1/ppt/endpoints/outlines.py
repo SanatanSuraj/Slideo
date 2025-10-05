@@ -27,10 +27,10 @@ OUTLINES_ROUTER = APIRouter(prefix="/outlines", tags=["Outlines"])
 
 @OUTLINES_ROUTER.get("/stream/{id}")
 async def stream_outlines(
-    id: uuid.UUID, 
+    id: str, 
     current_user: User = Depends(get_current_active_user)
 ):
-    presentation = await presentation_crud.get_presentation_by_id(str(id))
+    presentation = await presentation_crud.get_presentation_by_id(id)
 
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
@@ -89,9 +89,27 @@ async def stream_outlines(
             presentation_outlines_text += chunk
 
         try:
-            presentation_outlines_json = dict(
-                dirtyjson.loads(presentation_outlines_text)
-            )
+            # Add defensive logging
+            print("🧠 Raw Gemini output:", presentation_outlines_text[:200] + "..." if len(presentation_outlines_text) > 200 else presentation_outlines_text)
+            
+            # Try to parse as JSON first
+            try:
+                presentation_outlines_json = dict(
+                    dirtyjson.loads(presentation_outlines_text)
+                )
+            except Exception as json_error:
+                print("⚠️ JSON parsing failed, attempting to wrap as plain text outline")
+                # If JSON parsing fails, wrap the text as a basic outline structure
+                presentation_outlines_json = {
+                    "slides": [
+                        {
+                            "title": "Generated Outline",
+                            "content": presentation_outlines_text
+                        }
+                    ]
+                }
+                print("✅ Wrapped plain text as outline structure")
+                
         except Exception as e:
             traceback.print_exc()
             yield SSEErrorResponse(
@@ -110,7 +128,7 @@ async def stream_outlines(
             outlines=presentation_outlines.model_dump(),
             title=get_presentation_title_from_outlines(presentation_outlines)
         )
-        await presentation_crud.update_presentation(str(id), presentation_update)
+        await presentation_crud.update_presentation(id, presentation_update)
 
         yield SSECompleteResponse(
             key="presentation", value=presentation.model_dump(mode="json")

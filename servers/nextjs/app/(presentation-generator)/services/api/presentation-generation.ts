@@ -1,6 +1,7 @@
 import { getHeader, getHeaderForFormData } from "./header";
 import { IconSearch, ImageGenerate, ImageSearch, PreviousGeneratedImagesResponse } from "./params";
 import { ApiResponseHandler } from "./api-error-handler";
+import { fetchWithAuth, fetchWithAuthFormData } from "@/utils/api";
 
 export class PresentationGenerationApi {
   static async uploadDoc(documents: File[]) {
@@ -11,16 +12,18 @@ export class PresentationGenerationApi {
     });
 
     try {
-      const response = await fetch(
+      console.log('PresentationGenerationApi.uploadDoc: Starting document upload');
+      
+      const response = await fetchWithAuthFormData(
         `/api/v1/ppt/files/upload`,
         {
           method: "POST",
-          headers: getHeaderForFormData(),
           body: formData,
           cache: "no-cache",
         }
       );
 
+      console.log('PresentationGenerationApi.uploadDoc: Response status:', response.status);
       return await ApiResponseHandler.handleResponse(response, "Failed to upload documents");
     } catch (error) {
       console.error("Upload error:", error);
@@ -30,11 +33,12 @@ export class PresentationGenerationApi {
 
   static async decomposeDocuments(documentKeys: string[]) {
     try {
-      const response = await fetch(
+      console.log('PresentationGenerationApi.decomposeDocuments: Starting document decomposition');
+      
+      const response = await fetchWithAuth(
         `/api/v1/ppt/files/decompose`,
         {
           method: "POST",
-          headers: getHeader(),
           body: JSON.stringify({
             file_paths: documentKeys,
           }),
@@ -42,6 +46,7 @@ export class PresentationGenerationApi {
         }
       );
       
+      console.log('PresentationGenerationApi.decomposeDocuments: Response status:', response.status);
       return await ApiResponseHandler.handleResponse(response, "Failed to decompose documents");
     } catch (error) {
       console.error("Error in Decompose Files", error);
@@ -74,11 +79,12 @@ export class PresentationGenerationApi {
     web_search?: boolean;
   }) {
     try {
-      const response = await fetch(
+      console.log('PresentationGenerationApi.createPresentation: Starting presentation creation');
+      
+      const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/create`,
         {
           method: "POST",
-          headers: getHeader(),
           body: JSON.stringify({
             content,
             n_slides,
@@ -95,6 +101,7 @@ export class PresentationGenerationApi {
         }
       );
       
+      console.log('PresentationGenerationApi.createPresentation: Response status:', response.status);
       return await ApiResponseHandler.handleResponse(response, "Failed to create presentation");
     } catch (error) {
       console.error("error in presentation creation", error);
@@ -148,16 +155,18 @@ export class PresentationGenerationApi {
 
   static async presentationPrepare(presentationData: any) {
     try {
-      const response = await fetch(
+      console.log('PresentationGenerationApi.presentationPrepare: Starting presentation preparation');
+      
+      const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/prepare`,
         {
           method: "POST",
-          headers: getHeader(),
           body: JSON.stringify(presentationData),
           cache: "no-cache",
         }
       );
       
+      console.log('PresentationGenerationApi.presentationPrepare: Response status:', response.status);
       return await ApiResponseHandler.handleResponse(response, "Failed to prepare presentation");
     } catch (error) {
       console.error("error in data generation", error);

@@ -81,7 +81,8 @@ class ImageGenerationService:
             return "/static/images/placeholder.jpg"
 
     async def generate_image_openai(self, prompt: str, output_directory: str) -> str:
-        client = AsyncOpenAI()
+        from utils.get_env import get_openai_api_key_env
+        client = AsyncOpenAI(api_key=get_openai_api_key_env())
         result = await client.images.generate(
             model="dall-e-3",
             prompt=prompt,

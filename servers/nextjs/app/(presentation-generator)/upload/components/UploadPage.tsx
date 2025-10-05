@@ -26,6 +26,7 @@ import { OverlayLoader } from "@/components/ui/overlay-loader";
 import Wrapper from "@/components/Wrapper";
 import { setPptGenUploadState } from "@/store/slices/presentationGenUpload";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
+import AdvancedSettingsModal from "./AdvancedSettingsModal";
 
 // Types for loading state
 interface LoadingState {
@@ -63,6 +64,8 @@ const UploadPage = () => {
     extra_info: "",
   });
 
+  const [showSettings, setShowSettings] = useState(false);
+
   /**
    * Updates the presentation configuration
    * @param key - Configuration key to update
@@ -94,6 +97,16 @@ const UploadPage = () => {
    */
   const handleGeneratePresentation = async () => {
     if (!validateConfiguration()) return;
+    setShowSettings(true);
+  };
+
+  /**
+   * Handles saving advanced settings and starting generation
+   */
+  const handleSaveSettings = async (settings: Partial<PresentationConfig>) => {
+    // Update config with new settings
+    setConfig(prev => ({ ...prev, ...settings }));
+    setShowSettings(false);
 
     try {
       const hasUploadedAssets = files.length > 0;
@@ -112,6 +125,10 @@ const UploadPage = () => {
    * Handles document processing
    */
   const handleDocumentProcessing = async () => {
+    // Navigate to creating page first
+    trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/creating" });
+    router.push("/creating");
+
     setLoadingState({
       isLoading: true,
       message: "Processing documents...",
@@ -140,7 +157,7 @@ const UploadPage = () => {
       files: responses,
     }));
     dispatch(clearOutlines())
-    trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/documents-preview" });
+    trackEvent(MixpanelEvent.Navigation, { from: "/creating", to: "/documents-preview" });
     router.push("/documents-preview");
   };
 
@@ -148,12 +165,9 @@ const UploadPage = () => {
    * Handles direct presentation generation without documents
    */
   const handleDirectPresentationGeneration = async () => {
-    setLoadingState({
-      isLoading: true,
-      message: "Generating outlines...",
-      showProgress: true,
-      duration: 30,
-    });
+    // Navigate to creating page first
+    trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/creating" });
+    router.push("/creating");
 
     // Use the first available layout group for direct generation
     trackEvent(MixpanelEvent.Upload_Create_Presentation_API_Call);
@@ -170,10 +184,9 @@ const UploadPage = () => {
       web_search: !!config?.webSearch,
     });
 
-
     dispatch(setPresentationId(createResponse.id));
     dispatch(clearOutlines())
-    trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/outline" });
+    trackEvent(MixpanelEvent.Navigation, { from: "/creating", to: "/outline" });
     router.push("/outline");
   };
 
@@ -230,6 +243,13 @@ const UploadPage = () => {
         <span>Next</span>
         <ChevronRight className="!w-6 !h-6" />
       </Button>
+
+      <AdvancedSettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSave={handleSaveSettings}
+        initialConfig={config}
+      />
     </Wrapper>
   );
 };

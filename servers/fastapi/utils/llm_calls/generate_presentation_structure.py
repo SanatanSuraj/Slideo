@@ -1,10 +1,14 @@
+import sys
+import os
 from typing import Optional
-from models.llm_message import LLMSystemMessage, LLMUserMessage
+
+# Add the app directory to the Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../../..'))
+
+from app.core.llm_client import generate_structured
 from models.presentation_layout import PresentationLayoutModel
 from models.presentation_outline_model import PresentationOutlineModel
-from services.llm_client import LLMClient
 from utils.llm_client_error_handler import handle_llm_client_exceptions
-from utils.llm_provider import get_model
 from utils.get_dynamic_models import get_presentation_structure_model_with_n_slides
 from models.presentation_structure_model import PresentationStructureModel
 
@@ -102,32 +106,33 @@ async def generate_presentation_structure(
     using_slides_markdown: bool = False,
 ) -> PresentationStructureModel:
 
-    client = LLMClient()
-    model = get_model()
     response_model = get_presentation_structure_model_with_n_slides(
         len(presentation_outline.slides)
     )
 
+    # Create the prompt for structure generation
+    if using_slides_markdown:
+        system_prompt = get_messages_for_slides_markdown(
+            presentation_layout,
+            len(presentation_outline.slides),
+            presentation_outline.to_string(),
+            instructions,
+        )[0].content
+    else:
+        system_prompt = get_messages(
+            presentation_layout,
+            len(presentation_outline.slides),
+            presentation_outline.to_string(),
+            instructions,
+        )[0].content
+    
+    user_prompt = presentation_outline.to_string()
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
     try:
-        response = await client.generate_structured(
-            model=model,
-            messages=(
-                get_messages_for_slides_markdown(
-                    presentation_layout,
-                    len(presentation_outline.slides),
-                    presentation_outline.to_string(),
-                    instructions,
-                )
-                if using_slides_markdown
-                else get_messages(
-                    presentation_layout,
-                    len(presentation_outline.slides),
-                    presentation_outline.to_string(),
-                    instructions,
-                )
-            ),
-            response_format=response_model.model_json_schema(),
-            strict=True,
+        response = await generate_structured(
+            full_prompt,
+            response_model.model_json_schema(),
         )
         return PresentationStructureModel(**response)
     except Exception as e:
