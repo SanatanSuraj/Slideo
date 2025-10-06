@@ -1,4 +1,4 @@
-import { getHeader, getHeaderForFormData } from "./header";
+// Removed old header imports - now using fetchWithAuth from utils/api
 import { IconSearch, ImageGenerate, ImageSearch, PreviousGeneratedImagesResponse } from "./params";
 import { ApiResponseHandler } from "./api-error-handler";
 import { fetchWithAuth, fetchWithAuthFormData } from "@/utils/api";
@@ -114,11 +114,10 @@ export class PresentationGenerationApi {
     prompt: string
   ) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/slide/edit`,
         {
           method: "POST",
-          headers: getHeader(),
           body: JSON.stringify({
             id: slide_id,
             prompt,
@@ -136,11 +135,10 @@ export class PresentationGenerationApi {
 
   static async updatePresentationContent(body: any) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/update`,
         {
           method: "PATCH",
-          headers: getHeader(),
           body: JSON.stringify(body),
           cache: "no-cache",
         }
@@ -179,11 +177,10 @@ export class PresentationGenerationApi {
   
   static async generateImage(imageGenerate: ImageGenerate) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/images/generate?prompt=${imageGenerate.prompt}`,
         {
           method: "GET",
-          headers: getHeader(),
           cache: "no-cache",
         }
       );
@@ -197,11 +194,10 @@ export class PresentationGenerationApi {
 
   static getPreviousGeneratedImages = async (): Promise<PreviousGeneratedImagesResponse[]> => {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/images/generated`,
         {
           method: "GET",
-          headers: getHeader(),
         }
       );
       
@@ -214,11 +210,10 @@ export class PresentationGenerationApi {
   
   static async searchIcons(iconSearch: IconSearch) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/icons/search?query=${iconSearch.query}&limit=${iconSearch.limit}`,
         {
           method: "GET",
-          headers: getHeader(),
           cache: "no-cache",
         }
       );
@@ -235,11 +230,10 @@ export class PresentationGenerationApi {
   // EXPORT PRESENTATION
   static async exportAsPPTX(presentationData: any) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/export/pptx`,
         {
           method: "POST",
-          headers: getHeader(),
           body: JSON.stringify(presentationData),
           cache: "no-cache",
         }

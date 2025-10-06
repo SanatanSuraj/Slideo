@@ -10,19 +10,19 @@ export async function GET(
     const { id } = params;
     
     // Debug logging
-    console.log('🔍 Outlines Stream API: Request received for ID:', id);
-    console.log('🔍 Outlines Stream API: Request URL:', request.url);
-    console.log('🔍 Outlines Stream API: Headers:', Object.fromEntries(request.headers.entries()));
+    console.log('🔍 Presentation Stream API: Request received for ID:', id);
+    console.log('🔍 Presentation Stream API: Request URL:', request.url);
+    console.log('🔍 Presentation Stream API: Headers:', Object.fromEntries(request.headers.entries()));
     
     // Try to get token from Authorization header first
     let token = request.headers.get('authorization');
-    console.log('🔍 Outlines Stream API: Authorization header:', token ? `${token.substring(0, 20)}...` : 'None');
+    console.log('🔍 Presentation Stream API: Authorization header:', token ? `${token.substring(0, 20)}...` : 'None');
     
     // If no header, try to get token from query parameter (for EventSource)
     if (!token) {
       const url = new URL(request.url);
       const queryToken = url.searchParams.get('token');
-      console.log('🔍 Outlines Stream API: Query token:', queryToken ? `${queryToken.substring(0, 20)}...` : 'None');
+      console.log('🔍 Presentation Stream API: Query token:', queryToken ? `${queryToken.substring(0, 20)}...` : 'None');
       
       if (queryToken && !queryToken.startsWith('Bearer ')) {
         token = `Bearer ${queryToken}`;
@@ -31,21 +31,21 @@ export async function GET(
       }
     }
     
-    console.log('🔍 Outlines Stream API: Final token:', token ? `${token.substring(0, 20)}...` : 'None');
+    console.log('🔍 Presentation Stream API: Final token:', token ? `${token.substring(0, 20)}...` : 'None');
     
     if (!token || !token.startsWith('Bearer ')) {
-      console.log('❌ Outlines Stream API: No valid token found');
+      console.log('❌ Presentation Stream API: No valid token found');
       return NextResponse.json(
         { detail: 'Authorization token missing' },
         { status: 401 }
       );
     }
 
-    console.log('Proxying outlines stream request to FastAPI:', {
-      url: `${FASTAPI_BASE_URL}/api/v1/ppt/outlines/stream/${id}`
+    console.log('Proxying presentation stream request to FastAPI:', {
+      url: `${FASTAPI_BASE_URL}/api/v1/ppt/presentation/stream/${id}`
     });
 
-    const response = await fetch(`${FASTAPI_BASE_URL}/api/v1/ppt/outlines/stream/${id}`, {
+    const response = await fetch(`${FASTAPI_BASE_URL}/api/v1/ppt/presentation/stream/${id}`, {
       method: 'GET',
       headers: {
         'Authorization': token,
@@ -59,6 +59,16 @@ export async function GET(
         data: errorData
       });
       return NextResponse.json(errorData, { status: response.status });
+    }
+
+    // Check if response is empty (presentation not prepared)
+    if (response.headers.get('content-length') === '0' || 
+        response.headers.get('content-length') === null) {
+      console.log('Presentation not prepared, returning error');
+      return NextResponse.json(
+        { detail: 'Presentation not prepared for streaming. Please complete the outline and preparation steps first.' },
+        { status: 400 }
+      );
     }
 
     // For streaming responses, we need to pass through the stream
@@ -90,7 +100,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Error proxying outlines stream to FastAPI:', error);
+    console.error('Error proxying presentation stream to FastAPI:', error);
     return NextResponse.json(
       { detail: 'Internal server error' },
       { status: 500 }

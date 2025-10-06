@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../../..'))
 from app.core.llm_client import generate_structured
 from models.presentation_layout import PresentationLayoutModel
 from models.presentation_outline_model import PresentationOutlineModel
+from models.llm_message import LLMSystemMessage, LLMUserMessage
 from utils.llm_client_error_handler import handle_llm_client_exceptions
 from utils.get_dynamic_models import get_presentation_structure_model_with_n_slides
 from models.presentation_structure_model import PresentationStructureModel

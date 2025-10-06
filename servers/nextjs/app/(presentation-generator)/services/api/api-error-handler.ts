@@ -31,6 +31,9 @@ export class ApiResponseHandler {
     try {
       const errorData: ApiErrorResponse = await response.json();
       
+      // Log the full error response for debugging
+      console.error('🔍 Full API Error Response:', errorData);
+      
       // Extract error message in order of preference
       if (errorData.detail) {
         errorMessage = errorData.detail;
@@ -40,8 +43,21 @@ export class ApiResponseHandler {
         errorMessage = errorData.error;
       }
     } catch (parseError) {
-      // If JSON parsing fails, use status-based messages
-      errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+      console.error('🔍 JSON Parse Error:', parseError);
+      
+      // Try to get text response as fallback
+      try {
+        const textResponse = await response.text();
+        console.error('🔍 Non-JSON Error Response:', textResponse);
+        if (textResponse && textResponse.trim()) {
+          errorMessage = textResponse;
+        } else {
+          errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+        }
+      } catch (textError) {
+        console.error('🔍 Text Parse Error:', textError);
+        errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+      }
     }
 
     // Throw error with appropriate message
@@ -71,8 +87,17 @@ export class ApiResponseHandler {
           errorMessage = errorData.error;
         }
       } catch (parseError) {
-        // If JSON parsing fails, use status-based messages
-        errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+        // Try to get text response as fallback
+        try {
+          const textResponse = await response.text();
+          if (textResponse && textResponse.trim()) {
+            errorMessage = textResponse;
+          } else {
+            errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+          }
+        } catch (textError) {
+          errorMessage = this.getStatusBasedErrorMessage(response.status, defaultErrorMessage);
+        }
       }
 
       return {

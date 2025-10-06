@@ -7,12 +7,12 @@ const CreatingPresentation: React.FC = () => {
   const router = useRouter();
 
   useEffect(() => {
-    // Auto-redirect to dashboard if accessed directly without proper flow
-    const timer = setTimeout(() => {
-      router.push("/dashboard");
-    }, 5000);
-
-    return () => clearTimeout(timer);
+    // Don't auto-redirect - let the user stay on the creating page
+    // The presentation generation will handle the redirect when ready
+    console.log('CreatingPresentation: Staying on creating page, waiting for generation to complete');
+    
+    // Optional: Add a manual "Cancel" button or "Go to Dashboard" button
+    // instead of automatic redirect
   }, [router]);
 
   return (

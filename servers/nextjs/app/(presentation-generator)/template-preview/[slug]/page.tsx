@@ -15,7 +15,7 @@ import "prismjs/components/prism-jsx";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useFontLoader } from "../../hooks/useFontLoader";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
-import { getHeader } from "../../services/api/header";
+import { fetchWithAuth } from "@/utils/api";
 
 const GroupLayoutPreview = () => {
   const params = useParams();
@@ -49,9 +49,7 @@ const GroupLayoutPreview = () => {
     const loadCustomLayouts = async () => {
       if (!isCustom || !presentationId) return;
       try {
-        const res = await fetch(`/api/v1/ppt/template-management/get-templates/${presentationId}`, {
-          headers: getHeader(),
-        });
+        const res = await fetchWithAuth(`/api/v1/ppt/template-management/get-templates/${presentationId}`);
         if (!res.ok) return;
         const data = await res.json();
         const map: Record<string, { layout_id: string; layout_name: string; layout_code: string; fonts?: string[] }> = {};
@@ -112,9 +110,8 @@ const GroupLayoutPreview = () => {
   const deleteLayouts = async () => {
     refetch();
     router.back();
-    const response = await fetch(`/api/v1/ppt/template-management/delete-templates/${presentationId}`, {
+    const response = await fetchWithAuth(`/api/v1/ppt/template-management/delete-templates/${presentationId}`, {
       method: "DELETE",
-      headers: getHeader(),
     });
     if (response.ok) {
       router.push("/template-preview");
@@ -154,9 +151,8 @@ const GroupLayoutPreview = () => {
           },
         ],
       };
-      const res = await fetch(`/api/v1/ppt/template-management/save-templates`, {
+      const res = await fetchWithAuth(`/api/v1/ppt/template-management/save-templates`, {
         method: "POST",
-        headers: getHeader(),
         body: JSON.stringify(payload),
       });
       if (!res.ok) return;

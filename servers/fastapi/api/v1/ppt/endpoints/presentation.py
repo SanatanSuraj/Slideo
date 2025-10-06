@@ -239,94 +239,147 @@ async def create_presentation(
 
 @PRESENTATION_ROUTER.post("/prepare", response_model=Presentation)
 async def prepare_presentation(
-    presentation_id: Annotated[uuid.UUID, Body()],
+    presentation_id: Annotated[str, Body()],
     outlines: Annotated[List[SlideOutlineModel], Body()],
     layout: Annotated[PresentationLayoutModel, Body()],
     title: Annotated[Optional[str], Body()] = None,
     current_user: User = Depends(get_current_active_user)
 ):
-    if not outlines:
-        raise HTTPException(status_code=400, detail="Outlines are required")
+    try:
+        # Log incoming request details
+        logger.info(f"📝 Preparing presentation for user: {current_user.id}")
+        logger.info(f"📝 Presentation ID: {presentation_id}")
+        logger.info(f"📝 Number of outlines: {len(outlines) if outlines else 0}")
+        logger.info(f"📝 Layout name: {layout.name if layout else 'None'}")
+        logger.info(f"📝 Layout ordered: {layout.ordered if layout else 'None'}")
+        logger.info(f"📝 Number of slide layouts: {len(layout.slides) if layout and layout.slides else 0}")
+        
+        if not outlines:
+            logger.warning("❌ No outlines provided")
+            raise HTTPException(status_code=400, detail="Outlines are required")
 
-    presentation = await presentation_crud.get_presentation_by_id(str(presentation_id))
-    if not presentation:
-        raise HTTPException(status_code=404, detail="Presentation not found")
-    
-    # Check if user owns the presentation
-    if presentation.user_id != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized to prepare this presentation")
+        logger.info("📝 Fetching presentation from database...")
+        presentation = await presentation_crud.get_presentation_by_id(presentation_id)
+        if not presentation:
+            logger.error(f"❌ Presentation not found: {presentation_id}")
+            raise HTTPException(status_code=404, detail="Presentation not found")
+        
+        # Check if user owns the presentation
+        if presentation.user_id != str(current_user.id):
+            logger.error(f"❌ User {current_user.id} not authorized to prepare presentation {presentation_id}")
+            raise HTTPException(status_code=403, detail="Not authorized to prepare this presentation")
 
-    presentation_outline_model = PresentationOutlineModel(slides=outlines)
+        logger.info("📝 Creating presentation outline model...")
+        presentation_outline_model = PresentationOutlineModel(slides=outlines)
 
-    total_slide_layouts = len(layout.slides)
-    total_outlines = len(outlines)
+        total_slide_layouts = len(layout.slides)
+        total_outlines = len(outlines)
+        logger.info(f"📝 Total slide layouts: {total_slide_layouts}, Total outlines: {total_outlines}")
 
-    if layout.ordered:
-        presentation_structure = layout.to_presentation_structure()
-    else:
-        presentation_structure: PresentationStructureModel = (
-            await generate_presentation_structure(
-                presentation_outline=presentation_outline_model,
-                presentation_layout=layout,
-                instructions=presentation.instructions,
-            )
-        )
-
-    presentation_structure.slides = presentation_structure.slides[: len(outlines)]
-    for index in range(total_outlines):
-        random_slide_index = random.randint(0, total_slide_layouts - 1)
-        if index >= total_outlines:
-            presentation_structure.slides.append(random_slide_index)
-            continue
-        if presentation_structure.slides[index] >= total_slide_layouts:
-            presentation_structure.slides[index] = random_slide_index
-
-    if presentation.include_table_of_contents:
-        n_toc_slides = presentation.n_slides - total_outlines
-        toc_slide_layout_index = select_toc_or_list_slide_layout_index(layout)
-        if toc_slide_layout_index != -1:
-            outline_index = 1 if presentation.include_title_slide else 0
-            for i in range(n_toc_slides):
-                outlines_to = outline_index + 10
-                if total_outlines == outlines_to:
-                    outlines_to -= 1
-
-                presentation_structure.slides.insert(
-                    i + 1 if presentation.include_title_slide else i,
-                    toc_slide_layout_index,
-                )
-                toc_outline = f"Table of Contents\n\n"
-
-                for outline in presentation_outline_model.slides[
-                    outline_index:outlines_to
-                ]:
-                    page_number = (
-                        outline_index - i + n_toc_slides + 1
-                        if presentation.include_title_slide
-                        else outline_index - i + n_toc_slides
+        logger.info("📝 Generating presentation structure...")
+        if layout.ordered:
+            logger.info("📝 Using ordered layout structure")
+            presentation_structure = layout.to_presentation_structure()
+        else:
+            logger.info("📝 Generating structure using LLM...")
+            try:
+                presentation_structure: PresentationStructureModel = (
+                    await generate_presentation_structure(
+                        presentation_outline=presentation_outline_model,
+                        presentation_layout=layout,
+                        instructions=presentation.instructions,
                     )
-                    toc_outline += f"Slide page number: {page_number}\n Slide Content: {outline.content[:100]}\n\n"
+                )
+                logger.info("✅ LLM structure generation completed")
+            except Exception as e:
+                logger.error(f"❌ LLM structure generation failed: {str(e)}")
+                logger.error(f"❌ Exception type: {type(e).__name__}")
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate presentation structure: {str(e)}"
+                )
+
+        logger.info("📝 Processing slide structure...")
+        presentation_structure.slides = presentation_structure.slides[: len(outlines)]
+        for index in range(total_outlines):
+            random_slide_index = random.randint(0, total_slide_layouts - 1)
+            if index >= total_outlines:
+                presentation_structure.slides.append(random_slide_index)
+                continue
+            if presentation_structure.slides[index] >= total_slide_layouts:
+                presentation_structure.slides[index] = random_slide_index
+
+        logger.info("📝 Processing table of contents...")
+        if presentation.include_table_of_contents:
+            n_toc_slides = presentation.n_slides - total_outlines
+            toc_slide_layout_index = select_toc_or_list_slide_layout_index(layout)
+            if toc_slide_layout_index != -1:
+                outline_index = 1 if presentation.include_title_slide else 0
+                for i in range(n_toc_slides):
+                    outlines_to = outline_index + 10
+                    if total_outlines == outlines_to:
+                        outlines_to -= 1
+
+                    presentation_structure.slides.insert(
+                        i + 1 if presentation.include_title_slide else i,
+                        toc_slide_layout_index,
+                    )
+                    toc_outline = f"Table of Contents\n\n"
+
+                    for outline in presentation_outline_model.slides[
+                        outline_index:outlines_to
+                    ]:
+                        page_number = (
+                            outline_index - i + n_toc_slides + 1
+                            if presentation.include_title_slide
+                            else outline_index - i + n_toc_slides
+                        )
+                        toc_outline += f"Slide page number: {page_number}\n Slide Content: {outline.content[:100]}\n\n"
+                        outline_index += 1
+
                     outline_index += 1
 
-                outline_index += 1
+                    presentation_outline_model.slides.insert(
+                        i + 1 if presentation.include_title_slide else i,
+                        SlideOutlineModel(
+                            content=toc_outline,
+                        ),
+                    )
 
-                presentation_outline_model.slides.insert(
-                    i + 1 if presentation.include_title_slide else i,
-                    SlideOutlineModel(
-                        content=toc_outline,
-                    ),
-                )
+        logger.info("📝 Updating presentation in database...")
+        # Update presentation with new data
+        presentation_update = PresentationUpdate(
+            outlines=presentation_outline_model.model_dump(mode="json"),
+            title=title or presentation.title,
+            layout=layout.model_dump(),
+            structure=presentation_structure.model_dump()
+        )
+        updated_presentation = await presentation_crud.update_presentation(str(presentation_id), presentation_update)
+        logger.info(f"✅ Presentation updated successfully: {updated_presentation.id}")
 
-    # Update presentation with new data
-    presentation_update = PresentationUpdate(
-        outlines=presentation_outline_model.model_dump(mode="json"),
-        title=title or presentation.title,
-        layout=layout.model_dump(),
-        structure=presentation_structure.model_dump()
-    )
-    updated_presentation = await presentation_crud.update_presentation(str(presentation_id), presentation_update)
+        return updated_presentation
 
-    return updated_presentation
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are already properly formatted
+        raise
+    except Exception as e:
+        # Log full exception details
+        logger.error(f"❌ Internal server error in prepare_presentation: {str(e)}")
+        logger.error(f"❌ Exception type: {type(e).__name__}")
+        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+        
+        # Log request context for debugging
+        logger.error(f"❌ Request context - User ID: {current_user.id if current_user else 'None'}")
+        logger.error(f"❌ Request context - Presentation ID: {presentation_id}")
+        logger.error(f"❌ Request context - Outlines count: {len(outlines) if outlines else 0}")
+        logger.error(f"❌ Request context - Layout name: {layout.name if layout else 'None'}")
+        
+        # Return 500 with error details
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationWithSlides)
@@ -435,7 +488,7 @@ async def stream_presentation(
 
 @PRESENTATION_ROUTER.patch("/update", response_model=PresentationWithSlides)
 async def update_presentation(
-    id: Annotated[uuid.UUID, Body()],
+    id: Annotated[str, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
     title: Annotated[Optional[str], Body()] = None,
     slides: Annotated[Optional[List[Slide]], Body()] = None,
@@ -456,13 +509,11 @@ async def update_presentation(
         await presentation_crud.update_presentation(str(id), presentation_update)
 
     if slides:
-        # Just to make sure id is UUID
-        for slide in slides:
-            slide.presentation = uuid.UUID(slide.presentation)
-            slide.id = uuid.UUID(slide.id)
-
+        # Slides are already in the correct format (string IDs)
         # Execute operations handled by CRUD.where(Slide.presentation == presentation.id)
         # Add all operations handled by CRUD
+        for slide in slides:
+            await slide_crud.update_slide(slide.id, slide)
 
     # Commit operations handled by CRUD
 
@@ -492,7 +543,7 @@ async def export_presentation_as_pptx(
 
 @PRESENTATION_ROUTER.post("/export", response_model=PresentationPathAndEditPath)
 async def export_presentation_as_pptx_or_pdf(
-    id: Annotated[uuid.UUID, Body(description="Presentation ID to export")],
+    id: Annotated[str, Body(description="Presentation ID to export")],
     export_as: Annotated[
         Literal["pptx", "pdf"], Body(description="Format to export the presentation as")
     ] = "pptx",
@@ -518,8 +569,8 @@ async def export_presentation_as_pptx_or_pdf(
 async def check_if_api_request_is_valid(
     request: GeneratePresentationRequest,
     current_user: User = Depends(get_current_active_user),
-) -> Tuple[uuid.UUID,]:
-    presentation_id = uuid.uuid4()
+) -> Tuple[str,]:
+    presentation_id = str(uuid.uuid4())
     print(f"Presentation ID: {presentation_id}")
 
     # Making sure either content, slides markdown or files is provided
@@ -560,7 +611,7 @@ async def check_if_api_request_is_valid(
 
 async def generate_presentation_handler(
     request: GeneratePresentationRequest,
-    presentation_id: uuid.UUID,
+    presentation_id: str,
     async_status: Optional[Task],
     current_user: User = Depends(get_current_active_user),
 ):

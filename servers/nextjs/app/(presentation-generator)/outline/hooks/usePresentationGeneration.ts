@@ -38,7 +38,7 @@ export const usePresentationGeneration = (
       });
       return false;
     }
-    if (!selectedTemplate.slides.length) {
+    if (!selectedTemplate.slides || !selectedTemplate.slides.length) {
       toast.error("No Slide Schema found", {
         description: "Please select a Group before generating presentation",
       });
@@ -49,7 +49,7 @@ export const usePresentationGeneration = (
   }, [outlines, selectedTemplate]);
 
   const prepareLayoutData = useCallback(() => {
-    if (!selectedTemplate) return null;
+    if (!selectedTemplate || !selectedTemplate.slides) return null;
     return {
       name: selectedTemplate.name,
       ordered: selectedTemplate.ordered,
@@ -76,17 +76,38 @@ export const usePresentationGeneration = (
     try {
       const layoutData = prepareLayoutData();
 
-      if (!layoutData) return;
+      if (!layoutData) {
+        console.error('No layout data available');
+        toast.error("Layout Error", {
+          description: "No layout data available. Please select a template.",
+        });
+        return;
+      }
+      
       trackEvent(MixpanelEvent.Presentation_Prepare_API_Call);
+      console.log('Preparing presentation with data:', {
+        presentation_id: presentationId,
+        outlines: outlines?.length,
+        layout: layoutData
+      });
+      
       const response = await PresentationGenerationApi.presentationPrepare({
         presentation_id: presentationId,
         outlines: outlines,
         layout: layoutData,
       });
 
+      console.log('Presentation preparation response:', response);
+      
       if (response) {
         dispatch(clearPresentationData());
+        // Redirect to presentation page to show the prepared presentation
         router.replace(`/presentation?id=${presentationId}&stream=true`);
+      } else {
+        console.error('No response from presentation preparation');
+        toast.error("Preparation Error", {
+          description: "Failed to prepare presentation. Please try again.",
+        });
       }
     } catch (error: any) {
       console.error('Error In Presentation Generation(prepare).', error);

@@ -4,7 +4,7 @@ export interface Template {
   description: string;
   ordered: boolean;
   default?: boolean;
-  slides?: any
+  slides?: any[]; // Array of slide layouts
 }
 
 export interface LoadingState {

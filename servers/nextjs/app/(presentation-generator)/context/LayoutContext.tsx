@@ -16,7 +16,7 @@ import * as Babel from "@babel/standalone";
 import * as Recharts from "recharts";
 import * as d3 from 'd3';
 
-import { getHeader } from "../services/api/header";
+import { fetchWithAuthWait } from "@/utils/api";
 export interface LayoutInfo {
   id: string;
   name?: string;
@@ -357,15 +357,20 @@ export const LayoutProvider: React.FC<{
     const templateLayoutsCache = new Map<string, LayoutInfo[]>();
     const fullDataByTemplateID = new Map<string, FullDataInfo[]>();
     try {
-      const customTemplateResponse = await fetch(
-        `/api/v1/ppt/template-management/summary`,
-        {
-          headers: {
-            ...getHeader(),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          }
-        }
+      const customTemplateResponse = await fetchWithAuthWait(
+        `/api/v1/ppt/template-management/summary`
       );
+      
+      if (customTemplateResponse.status === 401) {
+        console.warn('LayoutContext: 401 Unauthorized - user may not be authenticated yet');
+        return { layouts, layoutsById, layoutsByTemplateID, templateSettingsMap, fileMap, templateLayoutsCache, fullDataByTemplateID };
+      }
+      
+      if (!customTemplateResponse.ok) {
+        console.error('LayoutContext: Failed to fetch template summary:', customTemplateResponse.status);
+        return { layouts, layoutsById, layoutsByTemplateID, templateSettingsMap, fileMap, templateLayoutsCache, fullDataByTemplateID };
+      }
+      
       const customTemplateData = await customTemplateResponse.json();
 
       const customFonts = new Map<string, string[]>();
@@ -385,15 +390,20 @@ export const LayoutProvider: React.FC<{
           layoutsByTemplateID.set(templateID, new Set());
         }
         const presentationId = pid;
-        const customLayoutResponse = await fetch(
-          `/api/v1/ppt/template-management/get-templates/${presentationId}`,
-          {
-            headers: {
-              ...getHeader(),
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
+        const customLayoutResponse = await fetchWithAuthWait(
+          `/api/v1/ppt/template-management/get-templates/${presentationId}`
         );
+        
+        if (customLayoutResponse.status === 401) {
+          console.warn(`LayoutContext: 401 Unauthorized for template ${presentationId} - skipping`);
+          continue;
+        }
+        
+        if (!customLayoutResponse.ok) {
+          console.error(`LayoutContext: Failed to fetch template ${presentationId}:`, customLayoutResponse.status);
+          continue;
+        }
+        
         const customLayoutsData = await customLayoutResponse.json();
         const allLayout = customLayoutsData.layouts;
 

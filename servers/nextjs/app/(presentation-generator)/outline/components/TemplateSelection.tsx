@@ -5,7 +5,7 @@ import TemplateLayouts from "./TemplateLayouts";
 
 import { Template } from "../types/index";
 
-import { getHeader } from "../../services/api/header";
+import { fetchWithAuthWait } from "@/utils/api";
 interface TemplateSelectionProps {
   selectedTemplate: Template | null;
   onSelectTemplate: (template: Template) => void;
@@ -27,11 +27,23 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
 
   useEffect(() => {
     // Fetch custom templates summary to get last_updated_at and template meta for sorting and display
-    fetch(`/api/v1/ppt/template-management/summary`, {
-      headers: getHeader(),
-    })
-      .then(res => res.json())
-      .then(data => {
+    const fetchSummary = async () => {
+      try {
+        const res = await fetchWithAuthWait(`/api/v1/ppt/template-management/summary`);
+        
+        if (res.status === 401) {
+          console.warn('TemplateSelection: 401 Unauthorized - user may not be authenticated yet');
+          setSummaryMap({});
+          return;
+        }
+        
+        if (!res.ok) {
+          console.error('TemplateSelection: Failed to fetch template summary:', res.status);
+          setSummaryMap({});
+          return;
+        }
+        
+        const data = await res.json();
         const map: Record<string, { lastUpdatedAt?: number; name?: string; description?: string }> = {};
         if (data && Array.isArray(data.presentations)) {
           for (const p of data.presentations) {
@@ -44,8 +56,13 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
           }
         }
         setSummaryMap(map);
-      })
-      .catch(() => setSummaryMap({}));
+      } catch (error) {
+        console.error('TemplateSelection: Error fetching template summary:', error);
+        setSummaryMap({});
+      }
+    };
+    
+    fetchSummary();
   }, []);
 
   const templates: Template[] = React.useMemo(() => {

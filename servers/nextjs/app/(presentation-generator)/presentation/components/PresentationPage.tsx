@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import Help from "./Help";
 import {
   usePresentationStreaming,
@@ -66,7 +67,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     setIsFullscreen
   );
 
-  // Initialize streaming
+  // Initialize streaming only if presentation is prepared
   usePresentationStreaming(
     presentation_id,
     stream,
@@ -82,7 +83,47 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   };
 
 
+  // Check presentation status immediately on mount
   useEffect(() => {
+    const checkPresentationStatus = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/api/v1/ppt/presentation/${presentation_id}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const presentation = await response.json();
+          if (!presentation.structure || !presentation.outlines) {
+            console.log('🔍 Presentation not prepared, showing error state');
+            setLoading(false);
+            setError(true);
+            toast.error("Presentation not ready", {
+              description: "This presentation needs to be prepared first. Please go back to the outline page.",
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking presentation status:', error);
+        setLoading(false);
+      }
+    };
+
+    checkPresentationStatus();
+  }, [presentation_id]);
+
+  useEffect(() => {
+    // Check if presentation is not prepared (missing structure/outlines)
+    if (!loading && !isStreaming && !presentationData?.slides && !presentationData?.structure && !presentationData?.outlines) {
+      console.log('🔍 Presentation not prepared, showing error state');
+      setError(true);
+      return;
+    }
+
     if(!loading && !isStreaming && presentationData?.slides && presentationData?.slides.length > 0){  
       const presentation_id = presentationData?.slides[0].layout.split(":")[0].split("custom-")[1];
     const fonts = getCustomTemplateFonts(presentation_id);
@@ -114,9 +155,25 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           <AlertCircle className="w-16 h-16 mb-4 text-red-500" />
           <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
           <p className="text-center mb-4">
-            We couldn't load your presentation. Please try again.
+            We couldn't load your presentation. This might be because the presentation hasn't been prepared yet.
           </p>
-          <Button onClick={() => { trackEvent(MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked, { pathname }); window.location.reload(); }}>Refresh Page</Button>
+          <div className="flex gap-3">
+            <Button 
+              variant="outline"
+              onClick={() => { 
+                trackEvent(MixpanelEvent.PresentationPage_Go_To_Outline_Button_Clicked, { pathname }); 
+                window.location.href = '/outline'; 
+              }}
+            >
+              Go to Outline
+            </Button>
+            <Button onClick={() => { 
+              trackEvent(MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked, { pathname }); 
+              window.location.reload(); 
+            }}>
+              Refresh Page
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -150,7 +207,23 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             id="presentation-slides-wrapper"
             className="mx-auto flex flex-col items-center overflow-hidden justify-center p-2 sm:p-6 pt-0"
           >
-            {!presentationData ||
+            {error ? (
+              <div className="relative w-full h-[calc(100vh-120px)] mx-auto flex items-center justify-center">
+                <div className="text-center">
+                  <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Presentation Not Ready</h2>
+                  <p className="text-gray-600 mb-4">
+                    This presentation needs to be prepared first. Please go back to the outline page to prepare it.
+                  </p>
+                  <Button 
+                    onClick={() => window.location.href = '/outline'}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    Go to Outline Page
+                  </Button>
+                </div>
+              </div>
+            ) : !presentationData ||
             loading ||
             !presentationData?.slides ||
             presentationData?.slides.length === 0 ? (

@@ -7,7 +7,7 @@ import { Copy, ExternalLink } from "lucide-react";
 import Header from "@/app/(presentation-generator)/dashboard/components/Header";
 import { useLayout } from "../context/LayoutContext";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
-import { getHeader } from "../services/api/header";
+import { fetchWithAuthWait } from "@/utils/api";
 import { toast } from "sonner";
 
 const LayoutPreview = () => {
@@ -38,11 +38,23 @@ const LayoutPreview = () => {
 
   useEffect(() => {
     // Fetch summary to map custom template slug to template meta and last updated time
-    fetch(`/api/v1/ppt/template-management/summary`, {
-      headers: getHeader(),
-    })
-      .then((res) => res.json())
-      .then((data) => {
+    const fetchSummary = async () => {
+      try {
+        const res = await fetchWithAuthWait(`/api/v1/ppt/template-management/summary`);
+        
+        if (res.status === 401) {
+          console.warn('LayoutPreview: 401 Unauthorized - user may not be authenticated yet');
+          setSummaryMap({});
+          return;
+        }
+        
+        if (!res.ok) {
+          console.error('LayoutPreview: Failed to fetch template summary:', res.status);
+          setSummaryMap({});
+          return;
+        }
+        
+        const data = await res.json();
         const map: Record<string, { lastUpdatedAt?: number; name?: string; description?: string }> = {};
         if (data && Array.isArray(data.presentations)) {
           for (const p of data.presentations) {
@@ -55,8 +67,13 @@ const LayoutPreview = () => {
           }
         }
         setSummaryMap(map);
-      })
-      .catch(() => setSummaryMap({}));
+      } catch (error) {
+        console.error('LayoutPreview: Error fetching template summary:', error);
+        setSummaryMap({});
+      }
+    };
+    
+    fetchSummary();
   }, []);
 
   // Transform context data to match expected format

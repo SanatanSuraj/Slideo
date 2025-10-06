@@ -1,6 +1,5 @@
 from typing import List, Optional
 from datetime import datetime
-import uuid
 
 from pydantic import BaseModel
 
@@ -8,7 +7,7 @@ from models.mongo.slide import SlideInDB
 
 
 class PresentationWithSlides(BaseModel):
-    id: uuid.UUID
+    id: str
     content: str
     n_slides: int
     language: str

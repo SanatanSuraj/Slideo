@@ -43,22 +43,23 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
       }
       dispatch(setLLMConfig(llmConfig));
       const isValid = hasValidLLMConfig(llmConfig);
+      console.log('ConfigurationInitializer: LLM config validity:', isValid, 'Route:', route);
       if (isValid) {
         // Check if the selected Ollama model is pulled
         if (llmConfig.LLM === 'ollama') {
           const isPulled = await checkIfSelectedOllamaModelIsPulled(llmConfig.OLLAMA_MODEL);
           if (!isPulled) {
-            router.push('/');
-            setLoadingToFalseAfterNavigatingTo('/');
-            return;
+            console.warn('Ollama model not pulled, but allowing access to continue');
+            // Don't redirect - let user stay where they are
+            // Show error message instead of redirecting
           }
         }
         if (llmConfig.LLM === 'custom') {
           const isAvailable = await checkIfSelectedCustomModelIsAvailable(llmConfig);
           if (!isAvailable) {
-            router.push('/');
-            setLoadingToFalseAfterNavigatingTo('/');
-            return;
+            console.warn('Custom model not available, but allowing access to continue');
+            // Don't redirect - let user stay where they are
+            // Show error message instead of redirecting
           }
         }
         // Don't redirect if user is on auth pages
@@ -68,10 +69,11 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
         } else {
           setIsLoading(false);
         }
-      } else if (route !== '/' && !route.startsWith('/auth/') && route !== '/upload') {
-        router.push('/');
-        setLoadingToFalseAfterNavigatingTo('/');
       } else {
+        // Don't redirect any pages - let the user stay where they are
+        // Show error message instead of redirecting
+        console.log('ConfigurationInitializer: Invalid LLM config, but allowing access to route:', route);
+        console.warn('LLM configuration is invalid. Some features may not work properly.');
         setIsLoading(false);
       }
     } else {

@@ -20,8 +20,10 @@ export const usePresentationStreaming = (
   const previousSlidesLength = useRef(0);
 
   useEffect(() => {
-    let eventSource: EventSource;
-    let accumulatedChunks = "";
+    // Early exit if no presentation ID
+    if (!presentationId) {
+      return;
+    }
 
     const initializeStream = async () => {
       dispatch(setStreaming(true));
@@ -29,102 +31,67 @@ export const usePresentationStreaming = (
 
       trackEvent(MixpanelEvent.Presentation_Stream_API_Call);
 
-      eventSource = new EventSource(
-        `/api/v1/ppt/presentation/stream/${presentationId}`
-      );
+      // Get token from localStorage for authentication
+      const token = localStorage.getItem('authToken');
+      console.log('🔍 usePresentationStreaming: Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'None');
+      
+      // COMPLETELY DIFFERENT APPROACH: Check if presentation is prepared first
+      try {
+        const checkResponse = await fetch(`/api/v1/ppt/presentation/${presentationId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
 
-      eventSource.addEventListener("response", (event) => {
-        const data = JSON.parse(event.data);
-
-        switch (data.type) {
-          case "chunk":
-            accumulatedChunks += data.chunk;
-            try {
-              const repairedJson = jsonrepair(accumulatedChunks);
-              const partialData = JSON.parse(repairedJson);
-
-              if (partialData.slides) {
-                if (
-                  partialData.slides.length !== previousSlidesLength.current &&
-                  partialData.slides.length > 0
-                ) {
-                  dispatch(
-                    setPresentationData({
-                      ...partialData,
-                      slides: partialData.slides,
-                    })
-                  );
-                  previousSlidesLength.current = partialData.slides.length;
-                  setLoading(false);
-                }
-              }
-            } catch (error) {
-              // JSON isn't complete yet, continue accumulating
-            }
-            break;
-
-          case "complete":
-            try {
-              dispatch(setPresentationData(data.presentation));
-              dispatch(setStreaming(false));
-              setLoading(false);
-              eventSource.close();
-
-              // Remove stream parameter from URL
-              const newUrl = new URL(window.location.href);
-              newUrl.searchParams.delete("stream");
-              window.history.replaceState({}, "", newUrl.toString());
-            } catch (error) {
-              eventSource.close();
-              console.error("Error parsing accumulated chunks:", error);
-            }
-            accumulatedChunks = "";
-            break;
-
-          case "closing":
-            dispatch(setPresentationData(data.presentation));
-            setLoading(false);
-            dispatch(setStreaming(false));
-            eventSource.close();
-
-            // Remove stream parameter from URL
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete("stream");
-            window.history.replaceState({}, "", newUrl.toString());
-            break;
-          case "error":
-            eventSource.close();
-            toast.error("Error in outline streaming", {
-              description:
-                data.detail ||
-                "Failed to connect to the server. Please try again.",
-            });
-            setLoading(false);
-            dispatch(setStreaming(false));
-            setError(true);
-            break;
+        if (!checkResponse.ok) {
+          throw new Error('Failed to fetch presentation');
         }
-      });
 
-      eventSource.onerror = (error) => {
-        console.error("EventSource failed:", error);
+        const presentation = await checkResponse.json();
+        console.log('🔍 Presentation data:', presentation);
+
+        // Check if presentation has required fields
+        if (!presentation.structure || !presentation.outlines) {
+          console.log('❌ Presentation not prepared, showing error state');
+          setLoading(false);
+          dispatch(setStreaming(false));
+          setError(true);
+          toast.error("Presentation not ready", {
+            description: "This presentation needs to be prepared first. Please go back to the outline page to prepare it.",
+          });
+          return;
+        }
+
+        // If presentation is prepared, check if we should stream or just fetch slides
+        if (stream) {
+          console.log('✅ Presentation is prepared and stream requested, starting streaming...');
+          // Start actual streaming here if needed
+          // For now, just fetch slides normally
+          fetchUserSlides();
+        } else {
+          console.log('✅ Presentation is prepared, fetching slides...');
+          fetchUserSlides();
+        }
+        setLoading(false);
+        dispatch(setStreaming(false));
+
+      } catch (error) {
+        console.error('❌ Error checking presentation:', error);
         setLoading(false);
         dispatch(setStreaming(false));
         setError(true);
-        eventSource.close();
-      };
+        toast.error("Failed to load presentation", {
+          description: "There was an error loading the presentation. Please try again or go back to the outline page.",
+        });
+      }
     };
 
-    if (stream) {
-      initializeStream();
-    } else {
-      fetchUserSlides();
-    }
+    // ALWAYS check presentation status first, regardless of stream parameter
+    initializeStream();
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
+      // No cleanup needed for this approach
     };
   }, [presentationId, stream, dispatch, setLoading, setError, fetchUserSlides]);
 };

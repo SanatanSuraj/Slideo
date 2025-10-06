@@ -1,4 +1,4 @@
-import { getHeaderForFormData } from "./header";
+import { fetchWithAuthFormData } from "@/utils/api";
 import { ApiResponseHandler } from "./api-error-handler";
 import { ImageAssetResponse } from "./types";
 
@@ -9,9 +9,8 @@ export class ImagesApi {
     try {
           const formData = new FormData();
       formData.append("file", file);
-    const response = await fetch(`/api/v1/ppt/images/upload`, {
+    const response = await fetchWithAuthFormData(`/api/v1/ppt/images/upload`, {
       method: "POST",
-      headers: getHeaderForFormData(),
       body: formData,
     });
     return await ApiResponseHandler.handleResponse(response, "Failed to upload image") as ImageAssetResponse;
