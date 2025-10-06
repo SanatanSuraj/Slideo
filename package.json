@@ -7,5 +7,8 @@
     "start": "node start-local.js",
     "dev": "node start-local.js --dev",
     "install-deps": "cd servers/nextjs && npm install && cd ../fastapi && pip install -r requirements.txt"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
   }
 }

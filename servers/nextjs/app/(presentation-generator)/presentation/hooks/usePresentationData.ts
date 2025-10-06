@@ -17,6 +17,21 @@ export const usePresentationData = (
     try {
       const data = await DashboardApi.getPresentation(presentationId);
       if (data) {
+        // Check if presentation is properly prepared
+        if (!data.structure || !data.outlines) {
+          console.log('🔍 Presentation not prepared, setting error state');
+          setError(true);
+          setLoading(false);
+          toast.error("Presentation not ready", {
+            description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
+            action: {
+              label: "Go to Outline",
+              onClick: () => window.location.href = '/outline'
+            }
+          });
+          return;
+        }
+        
         dispatch(setPresentationData(data));
         dispatch(clearHistory());
         setLoading(false);

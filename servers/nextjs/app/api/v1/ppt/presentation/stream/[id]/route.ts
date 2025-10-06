@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FASTAPI_BASE_URL = process.env.FASTAPI_BASE_URL || 'http://localhost:8000';
 
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -56,20 +67,21 @@ export async function GET(
       const errorData = await response.json();
       console.error('FastAPI error response:', {
         status: response.status,
-        data: errorData
+        data: errorData,
+        url: `${FASTAPI_BASE_URL}/api/v1/ppt/presentation/stream/${id}`
       });
-      return NextResponse.json(errorData, { status: response.status });
+      return NextResponse.json(errorData, { 
+        status: response.status,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      });
     }
 
-    // Check if response is empty (presentation not prepared)
-    if (response.headers.get('content-length') === '0' || 
-        response.headers.get('content-length') === null) {
-      console.log('Presentation not prepared, returning error');
-      return NextResponse.json(
-        { detail: 'Presentation not prepared for streaming. Please complete the outline and preparation steps first.' },
-        { status: 400 }
-      );
-    }
+    // Note: Streaming responses use transfer-encoding: chunked and don't have content-length
+    // The FastAPI endpoint will return appropriate error status codes if presentation isn't prepared
 
     // For streaming responses, we need to pass through the stream
     const stream = new ReadableStream({
@@ -97,6 +109,9 @@ export async function GET(
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
     });
   } catch (error) {

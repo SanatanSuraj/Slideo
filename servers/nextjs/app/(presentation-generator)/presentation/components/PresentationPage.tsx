@@ -36,7 +36,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const {getCustomTemplateFonts} = useLayout();
  
-  const { presentationData, isStreaming } = useSelector(
+  const { presentationData, isStreaming, outlines } = useSelector(
     (state: RootState) => state.presentationGeneration
   );
 
@@ -102,10 +102,28 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             setLoading(false);
             setError(true);
             toast.error("Presentation not ready", {
-              description: "This presentation needs to be prepared first. Please go back to the outline page.",
+              description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
+              action: {
+                label: "Go to Outline",
+                onClick: () => window.location.href = '/outline'
+              }
             });
             return;
           }
+        } else if (response.status === 400) {
+          // Handle specific preparation errors
+          const errorData = await response.json();
+          console.log('🔍 Presentation preparation error:', errorData);
+          setLoading(false);
+          setError(true);
+          toast.error("Presentation not prepared", {
+            description: errorData.detail || "This presentation needs to be prepared first.",
+            action: {
+              label: "Go to Outline",
+              onClick: () => window.location.href = '/outline'
+            }
+          });
+          return;
         }
       } catch (error) {
         console.error('Error checking presentation status:', error);
@@ -117,11 +135,21 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   }, [presentation_id]);
 
   useEffect(() => {
-    // Check if presentation is not prepared (missing structure/outlines)
-    if (!loading && !isStreaming && !presentationData?.slides && !presentationData?.structure && !presentationData?.outlines) {
-      console.log('🔍 Presentation not prepared, showing error state');
-      setError(true);
-      return;
+    // Check if presentation is not prepared (missing layout/outlines)
+    if (!loading && !isStreaming) {
+      // If no layout or outlines, presentation is not prepared
+      if (!presentationData?.layout || !outlines || outlines.length === 0) {
+        console.log('🔍 Presentation not prepared (missing layout/outlines), showing error state');
+        setError(true);
+        return;
+      }
+      
+      // If layout and outlines exist but no slides, and we're not streaming, try to trigger streaming
+      if (presentationData?.layout && outlines && outlines.length > 0 && (!presentationData?.slides || presentationData?.slides.length === 0)) {
+        console.log('🔍 Presentation prepared but no slides, may need streaming');
+        // Don't set error here, let streaming handle it
+        return;
+      }
     }
 
     if(!loading && !isStreaming && presentationData?.slides && presentationData?.slides.length > 0){  
@@ -130,7 +158,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   
     useFontLoader(fonts || []);
   }
-  }, [presentationData,loading,isStreaming]);
+  }, [presentationData, loading, isStreaming, outlines]);
   // Presentation Mode View
   if (isPresentMode) {
     return (
@@ -149,29 +177,33 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
         <div
-          className="bg-white border border-red-300 text-red-700 px-6 py-8 rounded-lg shadow-lg flex flex-col items-center"
+          className="bg-white border border-orange-300 text-orange-700 px-6 py-8 rounded-lg shadow-lg flex flex-col items-center max-w-md mx-auto"
           role="alert"
         >
-          <AlertCircle className="w-16 h-16 mb-4 text-red-500" />
-          <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
-          <p className="text-center mb-4">
-            We couldn't load your presentation. This might be because the presentation hasn't been prepared yet.
+          <AlertCircle className="w-16 h-16 mb-4 text-orange-500" />
+          <h2 className="text-xl font-semibold mb-2">Presentation Not Ready</h2>
+          <p className="text-center mb-4 text-sm">
+            This presentation needs to be prepared first. Please complete the outline generation and template selection process.
           </p>
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 w-full">
+            <Button 
+              onClick={() => { 
+                trackEvent(MixpanelEvent.Navigation, { pathname, action: 'go_to_outline' }); 
+                window.location.href = '/outline'; 
+              }}
+              className="w-full"
+            >
+              Go to Outline Page
+            </Button>
             <Button 
               variant="outline"
               onClick={() => { 
-                trackEvent(MixpanelEvent.PresentationPage_Go_To_Outline_Button_Clicked, { pathname }); 
-                window.location.href = '/outline'; 
+                trackEvent(MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked, { pathname }); 
+                window.location.reload(); 
               }}
+              className="w-full"
             >
-              Go to Outline
-            </Button>
-            <Button onClick={() => { 
-              trackEvent(MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked, { pathname }); 
-              window.location.reload(); 
-            }}>
-              Refresh Page
+              Try Again
             </Button>
           </div>
         </div>

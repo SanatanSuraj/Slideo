@@ -46,6 +46,28 @@ from utils.set_env import (
 
 def get_user_config():
     user_config_path = get_user_config_path_env()
+    
+    # Handle relative paths and missing USER_CONFIG_PATH
+    if not user_config_path or not os.path.isabs(user_config_path):
+        if not user_config_path:
+            app_data_dir = os.getenv("APP_DATA_DIRECTORY", "./app_data")
+        else:
+            # user_config_path is relative, use it as is
+            app_data_dir = os.path.dirname(user_config_path)
+            if not app_data_dir:
+                app_data_dir = "."
+        
+        # If relative path, resolve relative to project root (three levels up from fastapi dir)
+        if not os.path.isabs(app_data_dir):
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+            app_data_dir = os.path.join(project_root, app_data_dir.lstrip("./"))
+        
+        if not user_config_path:
+            user_config_path = os.path.join(app_data_dir, "userConfig.json")
+        else:
+            user_config_path = os.path.join(app_data_dir, os.path.basename(user_config_path))
+        
+        print(f"Resolved user config path: {user_config_path}")
 
     existing_config = UserConfig()
     try:
@@ -53,7 +75,7 @@ def get_user_config():
             with open(user_config_path, "r") as f:
                 existing_config = UserConfig(**json.load(f))
     except Exception as e:
-        print("Error while loading user config")
+        print(f"Error while loading user config from {user_config_path}: {e}")
         pass
 
     return UserConfig(

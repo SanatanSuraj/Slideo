@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from crud.presentation_crud import presentation_crud
 from crud.slide_crud import slide_crud
 from crud.template_crud import template_crud
-from auth.dependencies import get_current_active_user
+from auth.dependencies import get_current_active_user, get_current_active_user_with_query_fallback
 from models.mongo.user import User
 from constants.presentation import DEFAULT_TEMPLATES
 from enums.webhook_event import WebhookEvent
@@ -84,10 +84,10 @@ async def get_all_presentations(current_user: User = Depends(get_current_active_
         first_slide = slides[0] if slides else None
         
         presentations_with_slides.append(
-            PresentationWithSlides(
+            PresentationWithSlides.from_dict({
                 **presentation.dict(),
-                slides=[first_slide] if first_slide else [],
-            )
+                "slides": [first_slide] if first_slide else [],
+            })
         )
     
     return presentations_with_slides
@@ -107,10 +107,10 @@ async def get_presentation(
         raise HTTPException(403, "Not authorized to view this presentation")
     
     slides = await slide_crud.get_slides_by_presentation(id)
-    return PresentationWithSlides(
+    return PresentationWithSlides.from_dict({
         **presentation.dict(),
-        slides=slides,
-    )
+        "slides": slides,
+    })
 
 
 @PRESENTATION_ROUTER.delete("/{id}", status_code=204)
@@ -384,28 +384,53 @@ async def prepare_presentation(
 
 @PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationWithSlides)
 async def stream_presentation(
-    id: str, current_user: User = Depends(get_current_active_user)
+    id: str, current_user: User = Depends(get_current_active_user_with_query_fallback)
 ):
     presentation = await presentation_crud.get_presentation_by_id(id)
     if not presentation:
         raise HTTPException(status_code=404, detail="Presentation not found")
-    if not presentation.structure:
+    
+    print(f"🔍 Stream validation - Presentation ID: {id}")
+    print(f"🔍 Stream validation - Presentation found: {presentation is not None}")
+    print(f"🔍 Stream validation - User ID: {presentation.user_id}")
+    print(f"🔍 Stream validation - Current user ID: {current_user.id}")
+    print(f"🔍 Stream validation - Structure: {presentation.structure}")
+    print(f"🔍 Stream validation - Outlines: {presentation.outlines}")
+    print(f"🔍 Stream validation - Structure type: {type(presentation.structure)}")
+    print(f"🔍 Stream validation - Outlines type: {type(presentation.outlines)}")
+    print(f"🔍 Stream validation - Structure empty check: {not presentation.structure or presentation.structure == {}}")
+    print(f"🔍 Stream validation - Outlines empty check: {not presentation.outlines or presentation.outlines == {}}")
+    
+    # Check if user owns the presentation
+    if presentation.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to access this presentation")
+    
+    # Check if presentation has the required structure and outlines
+    if presentation.structure is None or not presentation.structure or presentation.structure == {}:
+        print("❌ Presentation not prepared - missing structure")
         raise HTTPException(
             status_code=400,
-            detail="Presentation not prepared for stream",
+            detail="Presentation not prepared. Please complete the outline generation and template selection process first.",
         )
-    if not presentation.outlines:
+    if presentation.outlines is None or not presentation.outlines or presentation.outlines == {}:
+        print("❌ Presentation not prepared - missing outlines")
         raise HTTPException(
             status_code=400,
-            detail="Outlines can not be empty",
+            detail="Presentation outlines are missing. Please generate outlines first by going to the outline page.",
         )
 
     image_generation_service = ImageGenerationService(get_images_directory())
 
     async def inner():
-        structure = presentation.get_structure()
-        layout = presentation.get_layout()
-        outline = presentation.get_presentation_outline()
+        from models.presentation_structure_model import PresentationStructureModel
+        from models.presentation_layout import PresentationLayoutModel
+        from models.presentation_outline_model import PresentationOutlineModel
+        from datetime import datetime
+        import json
+        
+        structure = PresentationStructureModel(**presentation.structure)
+        layout = PresentationLayoutModel(**presentation.layout)
+        outline = PresentationOutlineModel(**presentation.outlines)
 
         # These tasks will be gathered and awaited after all slides are generated
         async_assets_generation_tasks = []
@@ -432,12 +457,13 @@ async def stream_presentation(
                 return
 
             slide = Slide(
-                presentation=id,
-                layout_group=layout.name,
+                presentation_id=id,
+                slide_number=i,
                 layout=slide_layout.id,
-                index=i,
-                speaker_note=slide_content.get("__speaker_note__", ""),
-                content=slide_content,
+                notes=slide_content.get("__speaker_note__", ""),
+                content=json.dumps(slide_content),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             )
             slides.append(slide)
 
@@ -465,7 +491,7 @@ async def stream_presentation(
             generated_assets.extend(assets_list)
 
         # Moved this here to make sure new slides are generated before deleting the old ones
-        await slide_crud.delete_slides_by_presentation_id(str(id))
+        await slide_crud.delete_slides_by_presentation(str(id))
         
         # Commit operations handled by CRUD
 
@@ -473,10 +499,10 @@ async def stream_presentation(
         for slide in slides:
             await slide_crud.create_slide(slide)
 
-        response = PresentationWithSlides(
+        response = PresentationWithSlides.from_dict({
             **presentation.model_dump(),
-            slides=slides,
-        )
+            "slides": slides,
+        })
 
         yield SSECompleteResponse(
             key="presentation",
@@ -517,10 +543,10 @@ async def update_presentation(
 
     # Commit operations handled by CRUD
 
-    return PresentationWithSlides(
+    return PresentationWithSlides.from_dict({
         **presentation.model_dump(),
-        slides=slides or [],
-    )
+        "slides": slides or [],
+    })
 
 
 @PRESENTATION_ROUTER.post("/export/pptx", response_model=str)

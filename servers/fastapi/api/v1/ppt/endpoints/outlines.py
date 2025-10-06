@@ -19,7 +19,7 @@ from crud.presentation_crud import presentation_crud
 from services.documents_loader import DocumentsLoader
 from utils.llm_calls.generate_presentation_outlines import generate_ppt_outline
 from utils.ppt_utils import get_presentation_title_from_outlines
-from auth.dependencies import get_current_active_user
+from auth.dependencies import get_current_active_user, get_current_active_user_with_query_fallback
 from models.mongo.user import User
 
 OUTLINES_ROUTER = APIRouter(prefix="/outlines", tags=["Outlines"])
@@ -28,7 +28,7 @@ OUTLINES_ROUTER = APIRouter(prefix="/outlines", tags=["Outlines"])
 @OUTLINES_ROUTER.get("/stream/{id}")
 async def stream_outlines(
     id: str, 
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user_with_query_fallback)
 ):
     presentation = await presentation_crud.get_presentation_by_id(id)
 

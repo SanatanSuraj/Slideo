@@ -6,6 +6,7 @@ import { clearPresentationData } from "@/store/slices/presentationGeneration";
 import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { Template, LoadingState, TABS } from "../types/index";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { useLayout } from "../../context/LayoutContext";
 
 const DEFAULT_LOADING_STATE: LoadingState = {
   message: "",
@@ -23,6 +24,7 @@ export const usePresentationGeneration = (
   const dispatch = useDispatch();
   const router = useRouter();
   const [loadingState, setLoadingState] = useState<LoadingState>(DEFAULT_LOADING_STATE);
+  const { getLayoutsByTemplateID } = useLayout();
 
   const validateInputs = useCallback(() => {
     if (!outlines || outlines.length === 0) {
@@ -49,13 +51,30 @@ export const usePresentationGeneration = (
   }, [outlines, selectedTemplate]);
 
   const prepareLayoutData = useCallback(() => {
-    if (!selectedTemplate || !selectedTemplate.slides) return null;
+    if (!selectedTemplate) return null;
+    
+    // Get the actual layout data from the layout context
+    const layoutsForTemplate = getLayoutsByTemplateID(selectedTemplate.id);
+    
+    if (!layoutsForTemplate || layoutsForTemplate.length === 0) {
+      console.error('No layouts found for template:', selectedTemplate.id);
+      return null;
+    }
+    
+    // Convert LayoutInfo[] to SlideLayoutModel[] format expected by backend
+    const slides = layoutsForTemplate.map(layout => ({
+      id: layout.id,
+      name: layout.name,
+      description: layout.description,
+      json_schema: layout.json_schema
+    }));
+    
     return {
       name: selectedTemplate.name,
       ordered: selectedTemplate.ordered,
-      slides: selectedTemplate.slides
+      slides: slides
     };
-  }, [selectedTemplate]);
+  }, [selectedTemplate, getLayoutsByTemplateID]);
 
   const handleSubmit = useCallback(async () => {
     if (!selectedTemplate) {

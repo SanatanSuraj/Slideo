@@ -67,13 +67,19 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
 
   const templates: Template[] = React.useMemo(() => {
     const templates = getAllTemplateIDs();
-    if (templates.length === 0) return [];
+    console.log('🔍 TemplateSelection - getAllTemplateIDs():', templates);
+    console.log('🔍 TemplateSelection - loading:', loading);
+    if (templates.length === 0) {
+      console.log('🔍 TemplateSelection - No templates found, returning empty array');
+      return [];
+    }
 
     const Templates: Template[] = templates
       .filter((templateID: string) => {
         // Filter out template that contain any errored layouts (from custom templates compile/parse errors)
         const fullData = getFullDataByTemplateID(templateID);
         const hasErroredLayouts = fullData.some((fd: any) => (fd as any)?.component?.displayName === "CustomTemplateErrorSlide");
+        console.log(`🔍 TemplateSelection - Template ${templateID}: hasErroredLayouts=${hasErroredLayouts}, fullData length=${fullData.length}`);
         return !hasErroredLayouts;
       })
       .map(templateID => {
@@ -90,11 +96,14 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
       });
 
     // Sort templates to put default first, then by name
-    return Templates.sort((a, b) => {
+    const sortedTemplates = Templates.sort((a, b) => {
       if (a.default && !b.default) return -1;
       if (!a.default && b.default) return 1;
       return a.name.localeCompare(b.name);
     });
+    
+    console.log('🔍 TemplateSelection - Final templates:', sortedTemplates);
+    return sortedTemplates;
   }, [getAllTemplateIDs, getLayoutsByTemplateID, getTemplateSetting, getFullDataByTemplateID, summaryMap]);
 
   const inBuiltTemplates = React.useMemo(
