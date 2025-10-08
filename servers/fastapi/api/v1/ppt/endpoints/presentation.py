@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -10,9 +10,11 @@ from typing import Annotated, List, Literal, Optional, Tuple
 import dirtyjson
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path
 from fastapi.responses import StreamingResponse
+from fastapi.encoders import jsonable_encoder
 from crud.presentation_crud import presentation_crud
 from crud.slide_crud import slide_crud
 from crud.template_crud import template_crud
+from crud import task_crud
 from auth.dependencies import get_current_active_user, get_current_active_user_with_query_fallback
 from models.mongo.user import User
 from constants.presentation import DEFAULT_TEMPLATES
@@ -90,7 +92,7 @@ async def get_all_presentations(current_user: User = Depends(get_current_active_
             })
         )
     
-    return presentations_with_slides
+    return jsonable_encoder(presentations_with_slides)
 
 
 @PRESENTATION_ROUTER.get("/{id}", response_model=PresentationWithSlides)
@@ -107,10 +109,10 @@ async def get_presentation(
         raise HTTPException(403, "Not authorized to view this presentation")
     
     slides = await slide_crud.get_slides_by_presentation(id)
-    return PresentationWithSlides.from_dict({
+    return jsonable_encoder(PresentationWithSlides.from_dict({
         **presentation.dict(),
         "slides": slides,
-    })
+    }))
 
 
 @PRESENTATION_ROUTER.delete("/{id}", status_code=204)
@@ -171,13 +173,13 @@ async def create_presentation(
             raise HTTPException(status_code=500, detail="Database connection failed")
 
         # Check LLM provider configuration
-        llm_provider = os.getenv("LLM", "").lower()
-        if llm_provider == "openai":
-            openai_key = os.getenv("OPENAI_API_KEY")
-            if not openai_key:
-                logger.error("❌ OPENAI_API_KEY not found in environment")
-                raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-            logger.info("✅ OpenAI configuration verified")
+        llm_provider = os.getenv("LLM", "gemini").lower()
+        if llm_provider == "gemini":
+            gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if not gemini_key:
+                logger.error("❌ GEMINI_API_KEY not found in environment")
+                raise HTTPException(status_code=500, detail="Gemini API key not configured")
+            logger.info("✅ Gemini configuration verified")
         elif llm_provider == "google":
             google_key = os.getenv("GOOGLE_API_KEY")
             if not google_key:
@@ -214,7 +216,7 @@ async def create_presentation(
         presentation = await presentation_crud.get_presentation_by_id(created_presentation_id)
         logger.info(f"✅ Presentation retrieved successfully: {presentation.id}")
 
-        return presentation
+        return jsonable_encoder(presentation)
 
     except HTTPException:
         # Re-raise HTTP exceptions as they are already properly formatted
@@ -358,7 +360,7 @@ async def prepare_presentation(
         updated_presentation = await presentation_crud.update_presentation(str(presentation_id), presentation_update)
         logger.info(f"✅ Presentation updated successfully: {updated_presentation.id}")
 
-        return updated_presentation
+        return jsonable_encoder(updated_presentation)
 
     except HTTPException:
         # Re-raise HTTP exceptions as they are already properly formatted
@@ -460,10 +462,11 @@ async def stream_presentation(
                 presentation_id=id,
                 slide_number=i,
                 layout=slide_layout.id,
-                notes=slide_content.get("__speaker_note__", ""),
-                content=json.dumps(slide_content),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                layout_group=layout.name,
+                notes=slide_content.get("__speaker_note__", slide_content.get("speaker_note", "")),
+                content=json.dumps(slide_content),  # Convert dict to JSON string
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
             slides.append(slide)
 
@@ -543,10 +546,10 @@ async def update_presentation(
 
     # Commit operations handled by CRUD
 
-    return PresentationWithSlides.from_dict({
+    return jsonable_encoder(PresentationWithSlides.from_dict({
         **presentation.model_dump(),
         "slides": slides or [],
-    })
+    }))
 
 
 @PRESENTATION_ROUTER.post("/export/pptx", response_model=str)
@@ -586,10 +589,10 @@ async def export_presentation_as_pptx_or_pdf(
         export_as,
     )
 
-    return PresentationPathAndEditPath(
+    return jsonable_encoder(PresentationPathAndEditPath(
         **presentation_and_path.model_dump(),
         edit_path=f"/presentation?id={id}",
-    )
+    ))
 
 
 async def check_if_api_request_is_valid(
@@ -869,12 +872,14 @@ async def generate_presentation_handler(
                 i = start + offset
                 slide_layout = slide_layouts[i]
                 slide = Slide(
-                    presentation=presentation_id,
-                    layout_group=layout_model.name,
+                    presentation_id=presentation_id,
+                    slide_number=i,
                     layout=slide_layout.id,
-                    index=i,
-                    speaker_note=slide_content.get("__speaker_note__"),
-                    content=slide_content,
+                    layout_group=layout_model.name,
+                    notes=slide_content.get("__speaker_note__", ""),
+                    content=json.dumps(slide_content),
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
                 )
                 slides.append(slide)
                 batch_slides.append(slide)
@@ -932,7 +937,7 @@ async def generate_presentation_handler(
             response.model_dump(mode="json"),
         )
 
-        return response
+        return jsonable_encoder(response)
 
     except Exception as e:
         if not isinstance(e, HTTPException):
@@ -966,9 +971,9 @@ async def generate_presentation_sync(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        (presentation_id,) = await check_if_api_request_is_valid(request, sql_session)
+        (presentation_id,) = await check_if_api_request_is_valid(request, current_user)
         return await generate_presentation_handler(
-            request, presentation_id, None, sql_session
+            request, presentation_id, None, current_user
         )
     except Exception as e:
         traceback.print_exc()
@@ -984,7 +989,7 @@ async def generate_presentation_async(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        (presentation_id,) = await check_if_api_request_is_valid(request, sql_session)
+        (presentation_id,) = await check_if_api_request_is_valid(request, current_user)
 
         async_status = Task(
             status="pending",
@@ -998,9 +1003,8 @@ async def generate_presentation_async(
             request,
             presentation_id,
             async_status=async_status,
-            sql_session=sql_session,
         )
-        return async_status
+        return jsonable_encoder(async_status)
 
     except Exception as e:
         if not isinstance(e, HTTPException):
@@ -1022,7 +1026,7 @@ async def check_async_presentation_generation_status(
         raise HTTPException(
             status_code=404, detail="No presentation generation task found"
         )
-    return status
+    return jsonable_encoder(status)
 
 
 @PRESENTATION_ROUTER.post("/edit", response_model=PresentationPathAndEditPath)
@@ -1059,10 +1063,10 @@ async def edit_presentation_with_new_content(
         presentation.id, presentation.title or str(uuid.uuid4()), data.export_as
     )
 
-    return PresentationPathAndEditPath(
+    return jsonable_encoder(PresentationPathAndEditPath(
         **presentation_and_path.model_dump(),
         edit_path=f"/presentation?id={presentation.id}",
-    )
+    ))
 
 
 @PRESENTATION_ROUTER.post("/derive", response_model=PresentationPathAndEditPath)
@@ -1097,7 +1101,7 @@ async def derive_presentation_from_existing_one(
         new_presentation.id, new_presentation.title or str(uuid.uuid4()), data.export_as
     )
 
-    return PresentationPathAndEditPath(
+    return jsonable_encoder(PresentationPathAndEditPath(
         **presentation_and_path.model_dump(),
         edit_path=f"/presentation?id={new_presentation.id}",
-    )
+    ))

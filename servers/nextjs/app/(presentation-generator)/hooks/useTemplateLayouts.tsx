@@ -28,6 +28,16 @@ export const useTemplateLayouts = () => {
   // Render slide content with group validation, automatic Tiptap text editing, and editable images/icons
   const renderSlideContent = useMemo(() => {
     return (slide: any, isEditMode: boolean) => {
+      // Safety check for required slide properties
+      if (!slide || !slide.layout || !slide.layout_group) {
+        return (
+          <div className="flex flex-col items-center justify-center aspect-video h-full bg-gray-100 rounded-lg">
+            <p className="text-gray-600 text-center text-base">
+              Slide data incomplete. Missing layout information.
+            </p>
+          </div>
+        );
+      }
 
       const Layout = getTemplateLayout(slide.layout, slide.layout_group);
       if (loading) {
@@ -82,6 +92,11 @@ export const useTemplateLayouts = () => {
           </EditableLayoutWrapper>
         );
       }
+      // Debug: Log the slide content to see what's being passed to the template
+      console.log(`🔍 Slide ${slide.index + 1} content:`, slide.content);
+      console.log(`🔍 Slide ${slide.index + 1} content type:`, typeof slide.content);
+      console.log(`🔍 Slide ${slide.index + 1} content keys:`, Object.keys(slide.content || {}));
+      
       return (
         <SlideErrorBoundary label={`Slide ${slide.index + 1}`}>
           <Layout data={slide.content} />

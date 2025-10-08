@@ -7,7 +7,7 @@ import { RootState } from "@/store/store";
 
 
 
-export const useOutlineStreaming = (presentationId: string | null) => {
+export const useOutlineStreaming = (presentationId: string | null, onStreamingComplete?: () => void) => {
   const dispatch = useDispatch();
   const { outlines } = useSelector((state: RootState) => state.presentationGeneration);
   const [isStreaming, setIsStreaming] = useState(true);
@@ -172,6 +172,11 @@ export const useOutlineStreaming = (presentationId: string | null) => {
                 activeIndexRef.current = -1;
                 highestIndexRef.current = -1;
                 eventSource.close();
+                
+                // Trigger callback when streaming completes
+                if (onStreamingComplete) {
+                  onStreamingComplete();
+                }
               } catch (error) {
                 console.error("❌ Error parsing complete event:", error, data);
                 toast.error("Failed to parse presentation data");
@@ -189,6 +194,11 @@ export const useOutlineStreaming = (presentationId: string | null) => {
               activeIndexRef.current = -1;
               highestIndexRef.current = -1;
               eventSource.close();
+              
+              // Trigger callback when streaming closes
+              if (onStreamingComplete) {
+                onStreamingComplete();
+              }
               break;
             case "error":
 
@@ -204,6 +214,7 @@ export const useOutlineStreaming = (presentationId: string | null) => {
                   description: data.detail || 'Failed to connect to the server. Please try again.',
                 }
               );
+              // Don't trigger callback on error - let user handle manually
               break;
           }
         });
@@ -218,6 +229,7 @@ export const useOutlineStreaming = (presentationId: string | null) => {
           highestIndexRef.current = -1;
           eventSource.close();
           toast.error("Failed to connect to the server. Please try again.");
+          // Don't trigger callback on error - let user handle manually
         };
       } catch (error) {
 
@@ -228,6 +240,7 @@ export const useOutlineStreaming = (presentationId: string | null) => {
         activeIndexRef.current = -1;
         highestIndexRef.current = -1;
         toast.error("Failed to initialize connection");
+        // Don't trigger callback on error - let user handle manually
       }
     };
     initializeStream();

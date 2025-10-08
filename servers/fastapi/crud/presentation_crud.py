@@ -16,7 +16,12 @@ class PresentationCRUD:
     
     async def create_presentation(self, presentation: PresentationCreate) -> str:
         """Create a new presentation"""
+        # Generate a unique ID for the document
+        import uuid
+        document_id = str(uuid.uuid4())
+        
         presentation_data = {
+            "id": document_id,  # Add explicit id field
             "user_id": presentation.user_id,
             "title": presentation.title,
             "content": presentation.content,
@@ -32,6 +37,7 @@ class PresentationCRUD:
             "include_table_of_contents": presentation.include_table_of_contents,
             "include_title_slide": presentation.include_title_slide,
             "web_search": presentation.web_search,
+            "uuid": presentation.uuid,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }

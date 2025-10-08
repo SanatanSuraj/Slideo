@@ -7,8 +7,18 @@ import os
 from typing import Optional, AsyncGenerator, Dict, Any
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from FastAPI directory
+fastapi_env_path = os.path.join(os.path.dirname(__file__), '..', '..', 'servers', 'fastapi', '.env')
+if os.path.exists(fastapi_env_path):
+    load_dotenv(fastapi_env_path)
+else:
+    # Fallback to root directory .env if FastAPI .env doesn't exist
+    root_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    if os.path.exists(root_env_path):
+        load_dotenv(root_env_path)
+    else:
+        # Final fallback to current directory
+        load_dotenv()
 
 # Get LLM provider from environment
 LLM_PROVIDER = os.getenv("LLM", "google").lower()

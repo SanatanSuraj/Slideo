@@ -23,8 +23,14 @@ const OutlinePage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<string>(TABS.OUTLINE);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  
+  // Callback to switch to template tab when outline streaming completes
+  const handleStreamingComplete = () => {
+    setActiveTab(TABS.LAYOUTS);
+  };
+  
   // Custom hooks
-  const streamState = useOutlineStreaming(presentation_id);
+  const streamState = useOutlineStreaming(presentation_id, handleStreamingComplete);
   const { handleDragEnd, handleAddSlide } = useOutlineManagement(outlines);
   const { loadingState, handleSubmit } = usePresentationGeneration(
     presentation_id,

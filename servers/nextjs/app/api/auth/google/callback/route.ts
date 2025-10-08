@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const FASTAPI_BASE_URL = process.env.FASTAPI_BASE_URL || 'http://localhost:5002';
+const FASTAPI_BASE_URL = process.env.FASTAPI_BASE_URL || 'http://localhost:8000';
 const REDIRECT_URI = process.env.NEXTAUTH_URL + '/api/auth/google/callback';
 
 export async function GET(request: NextRequest) {

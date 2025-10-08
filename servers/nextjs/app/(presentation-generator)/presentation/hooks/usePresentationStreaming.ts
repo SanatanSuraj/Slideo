@@ -74,6 +74,8 @@ export const usePresentationStreaming = (
                 
                 if (parsedData.slides && Array.isArray(parsedData.slides)) {
                   console.log('🔍 Setting presentation data with slides:', parsedData.slides.length);
+                  console.log('🔍 First slide content:', parsedData.slides[0]?.content);
+                  console.log('🔍 First slide content type:', typeof parsedData.slides[0]?.content);
                   dispatch(setPresentationData(parsedData));
                 }
               } catch (parseError) {

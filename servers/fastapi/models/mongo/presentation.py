@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from bson import ObjectId
+import uuid
 
 class PresentationBase(BaseModel):
     title: Optional[str] = None
@@ -18,6 +19,7 @@ class PresentationBase(BaseModel):
     include_table_of_contents: bool = False
     include_title_slide: bool = True
     web_search: bool = False
+    uuid: Optional[str] = None
 
 class PresentationCreate(PresentationBase):
     user_id: str

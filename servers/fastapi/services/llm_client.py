@@ -1,12 +1,10 @@
 import asyncio
 import dirtyjson
 import json
+from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 from fastapi import HTTPException
-from openai import AsyncOpenAI
-from openai.types.chat.chat_completion_chunk import (
-    ChatCompletionChunk as OpenAIChatCompletionChunk,
-)
+# OpenAI imports removed - using Gemini only
 from google import genai
 from google.genai.types import Content as GoogleContent, Part as GoogleContentPart
 from google.genai.types import (
@@ -101,13 +99,11 @@ class LLMClient:
                 )
 
     def _get_openai_client(self):
-        api_key = get_openai_api_key_env()
-        if not api_key:
-            raise HTTPException(
-                status_code=400,
-                detail="OpenAI API Key is not set",
-            )
-        return AsyncOpenAI(api_key=api_key)
+        # OpenAI removed - using Gemini only
+        raise HTTPException(
+            status_code=400,
+            detail="OpenAI support has been removed. Please use Google Gemini instead.",
+        )
 
     def _get_google_client(self):
         if not get_google_api_key_env():
@@ -176,7 +172,7 @@ class LLMClient:
             message for message in messages if not isinstance(message, LLMSystemMessage)
         ]
 
-    # ? Generate Unstructured Content
+    # ? Generate Unstructured Content - OpenAI removed
     async def _generate_openai(
         self,
         model: str,
@@ -186,6 +182,11 @@ class LLMClient:
         extra_body: Optional[dict] = None,
         depth: int = 0,
     ) -> str | None:
+        # OpenAI support removed - use Google Gemini instead
+        raise HTTPException(
+            status_code=400,
+            detail="OpenAI support has been removed. Please use Google Gemini instead.",
+        )
         client: AsyncOpenAI = self._client
         response = await client.chat.completions.create(
             model=model,
@@ -368,12 +369,11 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         depth: int = 0,
     ):
-        extra_body = {"enable_thinking": False} if self.disable_thinking() else None
-        return await self._generate_openai(
+        # Use Google as fallback instead of OpenAI
+        return await self._generate_google(
             model=model,
             messages=messages,
             max_tokens=max_tokens,
-            extra_body=extra_body,
             depth=depth,
         )
 
@@ -714,14 +714,13 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         depth: int = 0,
     ):
-        extra_body = {"enable_thinking": False} if self.disable_thinking() else None
-        return await self._generate_openai_structured(
+        # Use Google as fallback instead of OpenAI
+        return await self._generate_google_structured(
             model=model,
             messages=messages,
             response_format=response_format,
             strict=strict,
             max_tokens=max_tokens,
-            extra_body=extra_body,
             depth=depth,
         )
 
@@ -1518,3 +1517,116 @@ class LLMClient:
             [each.text for each in response.content if each.type == "text"]
         )
         return result
+
+    # ? Generate Slide Content
+    async def generate_slide_content(
+        self,
+        outline: str,
+        language: str,
+        tone: Optional[str] = None,
+        verbosity: Optional[str] = None,
+        instructions: Optional[str] = None,
+    ) -> str:
+        """Generate slide content using the configured LLM provider"""
+        try:
+            # Create system and user prompts
+            system_prompt = f"""
+            You are a presentation generation model.
+            Generate slide content strictly from the provided outline.
+
+            Rules:
+            - Each outline section = one slide.
+            - Use the same title and create concise content based on that section.
+            - No generic placeholders (like 'Product Overview', 'Market Validation', etc.).
+            - Maintain order and logical flow from the outline.
+            - Output must be JSON: {{ "slides": [ {{ "title": "", "content": "" }} ] }}.
+
+            {"# User Instructions:" if instructions else ""}
+            {instructions or ""}
+
+            {"# Tone:" if tone else ""}
+            {tone or ""}
+
+            {"# Verbosity:" if verbosity else ""}
+            {verbosity or ""}
+
+            # Steps
+            1. Analyze the outline content carefully.
+            2. Generate structured slide based STRICTLY on the outline content.
+            3. Generate speaker note that is simple, clear, concise and to the point.
+
+            # Critical Requirements
+            - Use ONLY the content provided in the outline - do not add generic content
+            - Do not generate generic slide titles like "Product Overview", "Market Validation", "Company Traction"
+            - Extract the actual title and content from the outline section
+            - Maintain the specific information from the outline
+            - Slide body should not use words like "This slide", "This presentation"
+            - Rephrase the slide body to make it flow naturally while preserving outline content
+            - Only use markdown to highlight important points
+            - Make sure to follow language guidelines
+            - Speaker note should be normal text, not markdown
+            - Strictly follow the max and min character limit for every property in the slide
+            - Never ever go over the max character limit. Limit your narration to make sure you never go over the max character limit
+            - Number of items should not be more than max number of items specified in slide schema. If you have to put multiple points then merge them to obey max number of items
+            - Generate content as per the given tone
+            - Be very careful with number of words to generate for given field. As generating more than max characters will overflow in the design. So, analyze early and never generate more characters than allowed
+            - Do not add emoji in the content
+            - Metrics should be in abbreviated form with least possible characters. Do not add long sequence of words for metrics
+            - Include relevant statistics, data points, and metrics when available
+            - Create engaging, informative content that provides value to the audience
+            - Use bullet points and structured formatting for better readability
+            - Include specific examples and case studies where relevant
+            - For verbosity:
+                - If verbosity is 'concise', then generate description as 1/3 or lower of the max character limit. Don't worry if you miss content or context.
+                - If verbosity is 'standard', then generate description as 2/3 of the max character limit.
+                - If verbosity is 'text-heavy', then generate description as 3/4 or higher of the max character limit. Make sure it does not exceed the max character limit.
+
+            User instructions, tone and verbosity should always be followed and should supercede any other instruction, except for max and min character limit, slide schema and number of items.
+
+            - Provide output in json format and **don't include <parameters> tags**.
+
+            # Image and Icon Output Format
+            image: {{
+                __image_prompt__: string,
+            }}
+            icon: {{
+                __icon_query__: string,
+            }}
+            """
+
+            user_prompt = f"""
+            ## Current Date and Time
+            {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+            ## Icon Query And Image Prompt Language
+            English
+
+            ## Slide Content Language
+            {language}
+
+            ## Slide Outline (USE THIS CONTENT ONLY)
+            {outline}
+
+            IMPORTANT: Generate slide content based STRICTLY on the outline above. Do not add generic content or placeholder titles.
+            """
+
+            # Create messages for the LLM
+            messages = [
+                LLMSystemMessage(content=system_prompt),
+                LLMUserMessage(content=user_prompt)
+            ]
+
+            # Use the existing generate method
+            model = get_model()
+            response = await self.generate(
+                model=model,
+                messages=messages,
+                max_tokens=4000
+            )
+
+            return response
+
+        except Exception as e:
+            print(f"🔍 Error in generate_slide_content: {str(e)}")
+            # Return a basic error response
+            return json.dumps({"error": str(e), "slides": []})
