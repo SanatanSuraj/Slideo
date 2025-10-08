@@ -59,7 +59,14 @@ const SlideContent = ({ slide, index, presentationId }: SlideContentProps) => {
       );
 
       if (response) {
-        dispatch(updateSlide({ index: slide.index, slide: response }));
+        // Parse slide content from JSON string to object if needed
+        const processedResponse = {
+          ...response,
+          content: response.content && typeof response.content === 'string' 
+            ? JSON.parse(response.content) 
+            : response.content
+        };
+        dispatch(updateSlide({ index: slide.index, slide: processedResponse }));
         toast.success("Slide updated successfully");
       }
     } catch (error: any) {

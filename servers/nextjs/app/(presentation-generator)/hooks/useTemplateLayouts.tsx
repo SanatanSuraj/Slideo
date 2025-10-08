@@ -97,6 +97,15 @@ export const useTemplateLayouts = () => {
       console.log(`🔍 Slide ${slide.index + 1} content type:`, typeof slide.content);
       console.log(`🔍 Slide ${slide.index + 1} content keys:`, Object.keys(slide.content || {}));
       
+      // Debug: Check for author/date fields specifically
+      if (slide.content) {
+        console.log(`🔍 Slide ${slide.index + 1} - Looking for author/date fields:`);
+        console.log(`🔍 - introCard:`, slide.content.introCard);
+        console.log(`🔍 - presenterName:`, slide.content.presenterName);
+        console.log(`🔍 - presentationDate:`, slide.content.presentationDate);
+        console.log(`🔍 - All nested keys:`, JSON.stringify(slide.content, null, 2));
+      }
+      
       return (
         <SlideErrorBoundary label={`Slide ${slide.index + 1}`}>
           <Layout data={slide.content} />

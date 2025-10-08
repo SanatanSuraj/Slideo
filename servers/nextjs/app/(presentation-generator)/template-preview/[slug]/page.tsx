@@ -155,7 +155,12 @@ const GroupLayoutPreview = () => {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Failed to save template:", errorData);
+        alert(`Failed to save template: ${errorData.detail || 'Unknown error'}`);
+        return;
+      }
       // update cache map
       setLayoutsMap((prev) => ({
         ...prev,
@@ -168,6 +173,7 @@ const GroupLayoutPreview = () => {
       }));
       await refetch();
       setEditorOpen(false);
+      alert("Template saved successfully!");
     } finally {
       setIsSaving(false);
     }

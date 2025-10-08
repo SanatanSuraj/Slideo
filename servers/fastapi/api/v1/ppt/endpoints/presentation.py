@@ -44,7 +44,7 @@ from services.image_generation_service import ImageGenerationService
 from utils.dict_utils import deep_update
 from utils.export_utils import export_presentation
 from utils.llm_calls.generate_presentation_outlines import generate_ppt_outline
-from models.mongo.slide import Slide
+from models.mongo.slide import Slide, SlideCreate, SlideUpdateFromFrontend
 from models.sse_response import SSECompleteResponse, SSEErrorResponse, SSEResponse
 
 from services.temp_file_service import TEMP_FILE_SERVICE
@@ -500,7 +500,18 @@ async def stream_presentation(
 
         # Save slides to MongoDB
         for slide in slides:
-            await slide_crud.create_slide(slide)
+            slide_create = SlideCreate(
+                presentation_id=slide.presentation_id,
+                slide_number=slide.slide_number,
+                content=slide.content,
+                layout=slide.layout,
+                layout_group=slide.layout_group,
+                notes=slide.notes,
+                images=slide.images,
+                shapes=slide.shapes,
+                text_boxes=slide.text_boxes
+            )
+            await slide_crud.create_slide(slide_create)
 
         response = PresentationWithSlides.from_dict({
             **presentation.model_dump(),
@@ -520,7 +531,7 @@ async def update_presentation(
     id: Annotated[str, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
     title: Annotated[Optional[str], Body()] = None,
-    slides: Annotated[Optional[List[Slide]], Body()] = None,
+    slides: Annotated[Optional[List[SlideUpdateFromFrontend]], Body()] = None,
     current_user: User = Depends(get_current_active_user),
 ):
     presentation = await presentation_crud.get_presentation_by_id(str(id))
@@ -538,17 +549,34 @@ async def update_presentation(
         await presentation_crud.update_presentation(str(id), presentation_update)
 
     if slides:
-        # Slides are already in the correct format (string IDs)
-        # Execute operations handled by CRUD.where(Slide.presentation == presentation.id)
-        # Add all operations handled by CRUD
+        # Process slides from frontend format
         for slide in slides:
-            await slide_crud.update_slide(slide.id, slide)
+            if slide.id:
+                slide_update_data = {
+                    "content": slide.content,
+                    "layout": slide.layout,
+                    "layout_group": slide.layout_group,
+                    "notes": slide.notes,
+                    "images": slide.images,
+                    "shapes": slide.shapes,
+                    "text_boxes": slide.text_boxes
+                }
+                # Remove None values
+                slide_update_data = {k: v for k, v in slide_update_data.items() if v is not None}
+                
+                if slide_update_data:
+                    from models.mongo.slide import SlideUpdate
+                    slide_update = SlideUpdate(**slide_update_data)
+                    await slide_crud.update_slide(slide.id, slide_update)
 
     # Commit operations handled by CRUD
 
+    # Get updated slides from database
+    updated_slides = await slide_crud.get_slides_by_presentation(str(id))
+    
     return jsonable_encoder(PresentationWithSlides.from_dict({
         **presentation.model_dump(),
-        "slides": slides or [],
+        "slides": updated_slides or [],
     }))
 
 
@@ -905,7 +933,18 @@ async def generate_presentation_handler(
         # 8. Save Presentation and Slides
         # Save slides to MongoDB
         for slide in slides:
-            await slide_crud.create_slide(slide)
+            slide_create = SlideCreate(
+                presentation_id=slide.presentation_id,
+                slide_number=slide.slide_number,
+                content=slide.content,
+                layout=slide.layout,
+                layout_group=slide.layout_group,
+                notes=slide.notes,
+                images=slide.images,
+                shapes=slide.shapes,
+                text_boxes=slide.text_boxes
+            )
+            await slide_crud.create_slide(slide_create)
 
         if async_status:
             async_status.message = "Exporting presentation"

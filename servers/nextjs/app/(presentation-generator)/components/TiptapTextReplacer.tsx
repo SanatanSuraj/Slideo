@@ -76,12 +76,15 @@ const TiptapTextReplacer: React.FC<TiptapTextReplacerProps> = ({
         
         // Skip certain element types that shouldn't be editable
         if (shouldSkipElement(htmlElement)) return;
+        
+        // Debug: Log what text we're trying to find
+        console.log(`🔍 Looking for text: "${trimmedText}" in slide data:`, slideData);
 
         // Get all computed styles to preserve them
         const allClasses = Array.from(htmlElement.classList);
         const allStyles = htmlElement.getAttribute("style");
 
-        const dataPath = findDataPath(slideData, trimmedText);
+        const dataPath = findDataPath(slideData, trimmedText, "");
 
         // Create a container for the TiptapText
         const tiptapContainer = document.createElement("div");
@@ -338,6 +341,7 @@ const TiptapTextReplacer: React.FC<TiptapTextReplacerProps> = ({
         const currentPath = path ? `${path}.${key}` : key;
 
         if (typeof value === "string" && value.trim() === targetText.trim()) {
+          console.log(`🔍 Found matching text: "${targetText}" at path: "${currentPath}"`);
           return { path: currentPath, originalText: value };
         }
 

@@ -7,6 +7,7 @@ class SlideBase(BaseModel):
     slide_number: int
     content: str
     layout: Optional[str] = None
+    layout_group: Optional[str] = None
     notes: Optional[str] = None
     images: Optional[List[Dict[str, Any]]] = None
     shapes: Optional[List[Dict[str, Any]]] = None
@@ -18,10 +19,26 @@ class SlideCreate(SlideBase):
 class SlideUpdate(BaseModel):
     content: Optional[str] = None
     layout: Optional[str] = None
+    layout_group: Optional[str] = None
     notes: Optional[str] = None
     images: Optional[List[Dict[str, Any]]] = None
     shapes: Optional[List[Dict[str, Any]]] = None
     text_boxes: Optional[List[Dict[str, Any]]] = None
+
+class SlideUpdateFromFrontend(BaseModel):
+    """Model for handling slide updates from frontend format"""
+    id: Optional[str] = None
+    presentation_id: Optional[str] = None
+    slide_number: Optional[int] = None
+    content: Optional[str] = None
+    layout: Optional[str] = None
+    layout_group: Optional[str] = None
+    notes: Optional[str] = None
+    images: Optional[List[Dict[str, Any]]] = None
+    shapes: Optional[List[Dict[str, Any]]] = None
+    text_boxes: Optional[List[Dict[str, Any]]] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 class SlideInDB(SlideBase):
     id: Optional[str] = None

@@ -32,7 +32,27 @@ export const usePresentationData = (
           return;
         }
         
-        dispatch(setPresentationData(data));
+        // Parse slide content from JSON string to object
+        const processedData = {
+          ...data,
+          slides: data.slides?.map((slide: any) => {
+            if (slide.content && typeof slide.content === 'string') {
+              try {
+                const parsedContent = JSON.parse(slide.content);
+                return {
+                  ...slide,
+                  content: parsedContent
+                };
+              } catch (error) {
+                console.warn('Failed to parse slide content:', error);
+                return slide;
+              }
+            }
+            return slide;
+          }) || []
+        };
+        
+        dispatch(setPresentationData(processedData));
         dispatch(clearHistory());
         setLoading(false);
       }

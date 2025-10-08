@@ -21,6 +21,7 @@ class SlideCRUD:
             "slide_number": slide.slide_number,
             "content": slide.content,
             "layout": slide.layout,
+            "layout_group": slide.layout_group,
             "notes": slide.notes,
             "images": slide.images,
             "shapes": slide.shapes,

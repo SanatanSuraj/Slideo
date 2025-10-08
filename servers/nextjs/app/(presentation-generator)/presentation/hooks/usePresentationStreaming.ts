@@ -76,7 +76,30 @@ export const usePresentationStreaming = (
                   console.log('🔍 Setting presentation data with slides:', parsedData.slides.length);
                   console.log('🔍 First slide content:', parsedData.slides[0]?.content);
                   console.log('🔍 First slide content type:', typeof parsedData.slides[0]?.content);
-                  dispatch(setPresentationData(parsedData));
+                  
+                  // Parse slide content from JSON string to object
+                  const processedSlides = parsedData.slides.map((slide: any) => {
+                    if (slide.content && typeof slide.content === 'string') {
+                      try {
+                        const parsedContent = JSON.parse(slide.content);
+                        return {
+                          ...slide,
+                          content: parsedContent
+                        };
+                      } catch (error) {
+                        console.warn('Failed to parse slide content:', error);
+                        return slide;
+                      }
+                    }
+                    return slide;
+                  });
+                  
+                  const processedData = {
+                    ...parsedData,
+                    slides: processedSlides
+                  };
+                  
+                  dispatch(setPresentationData(processedData));
                 }
               } catch (parseError) {
                 // Not complete JSON yet, continue accumulating
@@ -85,7 +108,26 @@ export const usePresentationStreaming = (
             } else if (data.type === "complete") {
               console.log('🔍 Stream completed with final data');
               if (data.presentation) {
-                dispatch(setPresentationData(data.presentation));
+                // Parse slide content from JSON string to object for complete data
+                const processedPresentation = {
+                  ...data.presentation,
+                  slides: data.presentation.slides?.map((slide: any) => {
+                    if (slide.content && typeof slide.content === 'string') {
+                      try {
+                        const parsedContent = JSON.parse(slide.content);
+                        return {
+                          ...slide,
+                          content: parsedContent
+                        };
+                      } catch (error) {
+                        console.warn('Failed to parse slide content:', error);
+                        return slide;
+                      }
+                    }
+                    return slide;
+                  }) || []
+                };
+                dispatch(setPresentationData(processedPresentation));
               }
               setLoading(false);
               dispatch(setStreaming(false));

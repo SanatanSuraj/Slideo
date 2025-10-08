@@ -135,11 +135,14 @@ export class PresentationGenerationApi {
 
   static async updatePresentationContent(body: any) {
     try {
+      // Transform frontend slide format to backend format
+      const transformedBody = this.transformPresentationDataForBackend(body);
+      
       const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/update`,
         {
           method: "PATCH",
-          body: JSON.stringify(body),
+          body: JSON.stringify(transformedBody),
           cache: "no-cache",
         }
       );
@@ -149,6 +152,32 @@ export class PresentationGenerationApi {
       console.error("error in presentation content update", error);
       throw error;
     }
+  }
+
+  private static transformPresentationDataForBackend(presentationData: any) {
+    if (!presentationData) return presentationData;
+
+    const transformedData = {
+      id: presentationData.id,
+      n_slides: presentationData.n_slides,
+      title: presentationData.title,
+      slides: presentationData.slides ? presentationData.slides.map((slide: any) => ({
+        id: slide.id,
+        presentation_id: presentationData.id,
+        slide_number: slide.index || 0,
+        content: typeof slide.content === 'string' ? slide.content : JSON.stringify(slide.content),
+        layout: slide.layout || null,
+        layout_group: slide.layout_group || null,
+        notes: slide.speaker_note || slide.notes || null,
+        images: slide.images ? slide.images.map((img: any) => typeof img === 'string' ? { url: img } : img) : null,
+        shapes: slide.shapes || null,
+        text_boxes: slide.text_boxes || null,
+        created_at: slide.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })) : null
+    };
+
+    return transformedData;
   }
 
   static async presentationPrepare(presentationData: any) {
