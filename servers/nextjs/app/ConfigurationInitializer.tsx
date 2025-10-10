@@ -15,10 +15,17 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
   const router = useRouter();
   const route = usePathname();
 
+  // Skip configuration check for presentation pages
+  const isPresentationPage = route?.includes('/presentation');
+
   // Fetch user config state
   useEffect(() => {
-    fetchUserConfigState();
-  }, []);
+    if (!isPresentationPage) {
+      fetchUserConfigState();
+    } else {
+      setIsLoading(false);
+    }
+  }, [isPresentationPage]);
 
   const setLoadingToFalseAfterNavigatingTo = (pathname: string) => {
     const interval = setInterval(() => {
@@ -108,6 +115,10 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
     }
   }
 
+  // For presentation pages, always return children immediately
+  if (isPresentationPage) {
+    return children;
+  }
 
   if (isLoading) {
     return (

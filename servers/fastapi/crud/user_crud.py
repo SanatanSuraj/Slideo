@@ -48,10 +48,23 @@ class UserCRUD:
     
     async def get_user_by_id(self, user_id: str) -> Optional[UserInDB]:
         """Get user by ID"""
-        user_data = await self.collection.find_one({"_id": ObjectId(user_id)})
+        # Try to find user by ObjectId first
+        try:
+            user_data = await self.collection.find_one({"_id": ObjectId(user_id)})
+        except:
+            user_data = None
+        
+        # If not found, try to find by string ID (for legacy documents)
+        if not user_data:
+            user_data = await self.collection.find_one({"_id": user_id})
+        
         if user_data:
             user_data["id"] = str(user_data["_id"])
             del user_data["_id"]
+            
+            # Handle schema compatibility - convert old schema to new schema
+            user_data = self._normalize_user_data(user_data)
+            
             return UserInDB(**user_data)
         return None
     
@@ -61,6 +74,10 @@ class UserCRUD:
         if user_data:
             user_data["id"] = str(user_data["_id"])
             del user_data["_id"]
+            
+            # Handle schema compatibility - convert old schema to new schema
+            user_data = self._normalize_user_data(user_data)
+            
             return UserInDB(**user_data)
         return None
     
@@ -87,6 +104,10 @@ class UserCRUD:
         async for user_data in cursor:
             user_data["id"] = str(user_data["_id"])
             del user_data["_id"]
+            
+            # Handle schema compatibility - convert old schema to new schema
+            user_data = self._normalize_user_data(user_data)
+            
             users.append(UserInDB(**user_data))
         return users
     
@@ -102,6 +123,62 @@ class UserCRUD:
         if not await self.verify_password(password, user.hashed_password):
             return None
         return user
+    
+    def _normalize_user_data(self, user_data: dict) -> dict:
+        """Normalize user data to handle schema compatibility between old and new formats"""
+        normalized = user_data.copy()
+        
+        # Handle old schema fields
+        if "firstName" in normalized and "lastName" in normalized:
+            # Combine firstName and lastName into name
+            first_name = normalized.get("firstName", "")
+            last_name = normalized.get("lastName", "")
+            normalized["name"] = f"{first_name} {last_name}".strip()
+            # Remove old fields
+            normalized.pop("firstName", None)
+            normalized.pop("lastName", None)
+        
+        # Handle password field mapping
+        if "password" in normalized and "hashed_password" not in normalized:
+            normalized["hashed_password"] = normalized["password"]
+            normalized.pop("password", None)
+        
+        # Handle date field mapping
+        if "createdAt" in normalized and "created_at" not in normalized:
+            normalized["created_at"] = normalized["createdAt"]
+            normalized.pop("createdAt", None)
+        
+        if "updatedAt" in normalized and "updated_at" not in normalized:
+            normalized["updated_at"] = normalized["updatedAt"]
+            normalized.pop("updatedAt", None)
+        
+        # Handle boolean field mapping
+        if "isActive" in normalized and "is_active" not in normalized:
+            normalized["is_active"] = normalized["isActive"]
+            normalized.pop("isActive", None)
+        
+        # Ensure required fields have default values if missing
+        if "hashed_password" not in normalized:
+            normalized["hashed_password"] = pwd_context.hash("default_password")
+        
+        if "created_at" not in normalized:
+            normalized["created_at"] = datetime.utcnow()
+        
+        if "updated_at" not in normalized:
+            normalized["updated_at"] = datetime.utcnow()
+        
+        if "is_active" not in normalized:
+            normalized["is_active"] = True
+        
+        if "plan" not in normalized:
+            normalized["plan"] = "free"
+        
+        # Remove any extra fields that might cause issues
+        extra_fields = ["__v", "lastLogin", "isVerified"]
+        for field in extra_fields:
+            normalized.pop(field, None)
+        
+        return normalized
 
 # Global instance
 user_crud = UserCRUD()

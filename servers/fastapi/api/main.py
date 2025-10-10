@@ -14,6 +14,7 @@ from api.v1.slides.router import router as slides_router
 from api.v1.db_status import router as db_status_router
 from api.v1.ppt.endpoints.pptx_storage import PPTX_STORAGE_ROUTER
 from api.v1.presentation_final_edits.router import PRESENTATION_FINAL_EDIT_ROUTER
+from api.v1.final_presentations.router import FINAL_PRESENTATION_ROUTER
 from utils.asset_directory_utils import get_images_directory
 from utils.get_env import get_app_data_directory_env
 
@@ -34,6 +35,7 @@ app.include_router(slides_router, prefix="/api/v1")
 app.include_router(db_status_router, prefix="/api/v1")
 app.include_router(PPTX_STORAGE_ROUTER, prefix="/api/v1/ppt")
 app.include_router(PRESENTATION_FINAL_EDIT_ROUTER, prefix="/api/v1/presentation_final_edits")
+app.include_router(FINAL_PRESENTATION_ROUTER, prefix="/api/v1/final_presentations")
 
 # Middlewares
 origins = ["*"]

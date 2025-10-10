@@ -23,6 +23,8 @@ interface PresentationGenerationState {
   presentationData: PresentationData | null;
   isSlidesRendered: boolean;
   isLayoutLoading: boolean;
+  isSaving: boolean;
+  isSaved: boolean;
 }
 
 const initialState: PresentationGenerationState = {
@@ -34,6 +36,8 @@ const initialState: PresentationGenerationState = {
   isStreaming: null,
   error: null,
   presentationData: null,
+  isSaving: false,
+  isSaved: false,
 };
 
 const presentationGenerationSlice = createSlice({
@@ -42,6 +46,12 @@ const presentationGenerationSlice = createSlice({
   reducers: {
     setStreaming: (state, action: PayloadAction<boolean>) => {
       state.isStreaming = action.payload;
+    },
+    setSaving: (state, action: PayloadAction<boolean>) => {
+      state.isSaving = action.payload;
+    },
+    setSaved: (state, action: PayloadAction<boolean>) => {
+      state.isSaved = action.payload;
     },
     // Loading
     setLoading: (state, action: PayloadAction<boolean>) => {
@@ -382,6 +392,8 @@ const presentationGenerationSlice = createSlice({
 
 export const {
   setStreaming,
+  setSaving,
+  setSaved,
   setLoading,
   setLayoutLoading,
   setPresentationId,

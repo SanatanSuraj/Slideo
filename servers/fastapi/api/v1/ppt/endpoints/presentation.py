@@ -546,6 +546,54 @@ async def stream_presentation(
             )
             await slide_crud.create_slide(slide_create)
 
+        # Auto-save to presentation_final_edits collection when generation is complete
+        try:
+            from crud.presentation_final_edit_crud import presentation_final_edit_crud
+            from models.mongo.presentation_final_edit import PresentationFinalEditCreate
+            
+            # Check if presentation is already saved as final edit
+            existing_final_edit = await presentation_final_edit_crud.get_presentation_final_edit_by_presentation_id(
+                str(id)
+            )
+            
+            # Only auto-save if no final edit exists or if the user owns the existing final edit
+            if not existing_final_edit or existing_final_edit.user_id == current_user.id:
+                # Prepare slides data for storage
+                slides_data = {
+                    "slides": [slide.model_dump() for slide in slides],
+                    "total_slides": len(slides),
+                    "export_format": "pptx"  # Default format
+                }
+                
+                # Ensure all slides have proper IDs
+                for slide_data in slides_data["slides"]:
+                    if not slide_data.get("id"):
+                        # Generate a valid MongoDB ObjectId if none exists
+                        from bson import ObjectId
+                        slide_data["id"] = str(ObjectId())
+                
+                # Create final edit record
+                final_edit_data = PresentationFinalEditCreate(
+                    presentation_id=str(id),
+                    user_id=current_user.id,
+                    title=presentation.title or "Untitled Presentation",
+                    template_id=presentation.layout.get("id") if presentation.layout else None,
+                    slides=slides_data,
+                    thumbnail_url=None,  # TODO: Generate thumbnail
+                    s3_pptx_url=None,  # Will be set when exported
+                    s3_pdf_url=None,   # Will be set when exported
+                    is_published=False
+                )
+                
+                final_edit_id = await presentation_final_edit_crud.create_presentation_final_edit(final_edit_data)
+                print(f"✅ Auto-saved presentation {id} to final_edits with ID: {final_edit_id}")
+            else:
+                print(f"✅ Presentation {id} already exists in final_edits, skipping auto-save")
+                
+        except Exception as e:
+            print(f"⚠️ Failed to auto-save presentation {id} to final_edits: {str(e)}")
+            # Don't fail the entire request if auto-save fails
+
         response = PresentationWithSlides.from_dict({
             **presentation.model_dump(),
             "slides": slides,

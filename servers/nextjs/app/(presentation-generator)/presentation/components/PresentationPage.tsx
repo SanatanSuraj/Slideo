@@ -16,6 +16,7 @@ import Help from "./Help";
 import {
   usePresentationStreaming,
   usePresentationData,
+  useFinalPresentationData,
   usePresentationNavigation,
   useAutoSave,
 } from "../hooks";
@@ -24,6 +25,7 @@ import LoadingState from "./LoadingState";
 import { useLayout } from "../../context/LayoutContext";
 import { useFontLoader } from "../../hooks/useFontLoader";
 import { usePresentationUndoRedo } from "../hooks/PresentationUndoRedo";
+import { SavingIndicator } from "./SavingIndicator";
 const PresentationPage: React.FC<PresentationPageProps> = ({
   presentation_id,
 }) => {
@@ -36,7 +38,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const {getCustomTemplateFonts} = useLayout();
  
-  const { presentationData, isStreaming, outlines } = useSelector(
+  const { presentationData, isStreaming, outlines, isSaving: isAutoSaving, isSaved } = useSelector(
     (state: RootState) => state.presentationGeneration
   );
 
@@ -48,6 +50,12 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
   // Custom hooks
   const { fetchUserSlides } = usePresentationData(
+    presentation_id,
+    setLoading,
+    setError
+  );
+
+  const { fetchFinalPresentationData } = useFinalPresentationData(
     presentation_id,
     setLoading,
     setError
@@ -87,70 +95,79 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   useEffect(() => {
     const checkPresentationStatus = async () => {
       try {
-        const token = localStorage.getItem('authToken');
-        const response = await fetch(`/api/v1/ppt/presentation/${presentation_id}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const presentation = await response.json();
-          if (!presentation.structure || !presentation.outlines) {
-            console.log('🔍 Presentation not prepared, showing error state');
-            setLoading(false);
-            setError(true);
-            toast.error("Presentation not ready", {
-              description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
-              action: {
-                label: "Go to Outline",
-                onClick: () => window.location.href = '/outline'
-              }
-            });
-            return;
-          }
-        } else if (response.status === 400) {
-          // Handle specific preparation errors
-          const errorData = await response.json();
-          console.log('🔍 Presentation preparation error:', errorData);
-          setLoading(false);
-          setError(true);
-          toast.error("Presentation not prepared", {
-            description: errorData.detail || "This presentation needs to be prepared first.",
-            action: {
-              label: "Go to Outline",
-              onClick: () => window.location.href = '/outline'
-            }
-          });
-          return;
-        }
+        // First try to load from final presentations (new approach)
+        await fetchFinalPresentationData();
       } catch (error) {
         console.error('Error checking presentation status:', error);
-        setLoading(false);
+        // Don't set loading to false immediately, let the streaming logic handle it
+        console.log('🔍 Final presentation data fetch failed, will try regular presentation data');
       }
     };
 
     checkPresentationStatus();
-  }, [presentation_id]);
+  }, [presentation_id, fetchFinalPresentationData]);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let readinessCheckTimeout: NodeJS.Timeout;
+    
     // Check if presentation is not prepared (missing layout/outlines)
-    if (!loading && !isStreaming) {
+    // Only run this check after we've had a chance to load data
+    if (!loading && !isStreaming && presentationData !== null) {
+      // Add a small delay to ensure all data is loaded
+      readinessCheckTimeout = setTimeout(() => {
+      console.log('🔍 Presentation readiness check:', {
+        loading,
+        isStreaming,
+        hasLayout: !!presentationData?.layout,
+        hasOutlines: !!outlines && outlines.length > 0,
+        hasSlides: !!presentationData?.slides && presentationData?.slides.length > 0,
+        layout: presentationData?.layout,
+        outlines: outlines,
+        outlinesType: typeof outlines,
+        outlinesLength: outlines?.length,
+        slides: presentationData?.slides
+      });
+      
       // If no layout or outlines, presentation is not prepared
-      if (!presentationData?.layout || !outlines || outlines.length === 0) {
+      // But if we have slides, the presentation is ready regardless of outlines
+      const hasSlides = presentationData?.slides && presentationData?.slides.length > 0;
+      const hasLayout = !!presentationData?.layout;
+      const hasOutlines = !!outlines && outlines.length > 0;
+      
+      if (!hasLayout || (!hasOutlines && !hasSlides)) {
         console.log('🔍 Presentation not prepared (missing layout/outlines), showing error state');
-        setError(true);
-        return;
+        console.log('🔍 Detailed check:', {
+          hasPresentationData: !!presentationData,
+          hasLayout,
+          hasOutlines,
+          hasSlides,
+          outlinesLength: outlines?.length,
+          slidesLength: presentationData?.slides?.length,
+          presentationDataKeys: presentationData ? Object.keys(presentationData) : null
+        });
+        // Add a small delay to prevent showing error too early
+        timeoutId = setTimeout(() => {
+          setError(true);
+        }, 1000);
       }
       
       // If layout and outlines exist but no slides, and we're not streaming, try to trigger streaming
-      if (presentationData?.layout && outlines && outlines.length > 0 && (!presentationData?.slides || presentationData?.slides.length === 0)) {
+      if (hasLayout && hasOutlines && !hasSlides) {
         console.log('🔍 Presentation prepared but no slides, may need streaming');
         // Don't set error here, let streaming handle it
-        return;
       }
+      }, 500); // 500ms delay to ensure data is loaded
     }
+    
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (readinessCheckTimeout) {
+        clearTimeout(readinessCheckTimeout);
+      }
+    };
 
     if(!loading && !isStreaming && presentationData?.slides && presentationData?.slides.length > 0){  
       const presentation_id = presentationData?.slides[0].layout.split(":")[0].split("custom-")[1];
@@ -213,10 +230,8 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
   return (
     <div className="h-screen flex overflow-hidden flex-col">
-      <div className="fixed right-6 top-[5.2rem] z-50">
-        {isSaving && <Loader2 className="w-6 h-6 animate-spin text-blue-500" />}
-      </div>
-
+      <SavingIndicator isSaving={isAutoSaving} isSaved={isSaved} />
+      
       <Header presentation_id={presentation_id} currentSlide={selectedSlide} />
       <Help />
 
@@ -268,7 +283,17 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                     />
                   ))}
                 </div>
-                {stream && <LoadingState />}
+                {(stream || loading) && (
+                  <LoadingState 
+                    message={
+                      loading && !stream 
+                        ? "Loading your presentation..." 
+                        : stream 
+                        ? "Generating slides with AI..." 
+                        : undefined
+                    } 
+                  />
+                )}
               </div>
             ) : (
               <>
@@ -293,3 +318,4 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 };
 
 export default PresentationPage;
+

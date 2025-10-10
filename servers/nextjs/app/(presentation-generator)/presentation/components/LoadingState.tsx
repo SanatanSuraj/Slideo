@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
+interface LoadingStateProps {
+  message?: string;
+}
 
-const LoadingState = () => {
+const LoadingState: React.FC<LoadingStateProps> = ({ message }) => {
     const [currentTipIndex, setCurrentTipIndex] = useState(0);
     const tips = [
         "We're crafting your presentation with AI magic ✨",
@@ -30,7 +33,7 @@ const LoadingState = () => {
                     <div className="w-full max-w-md bg-white/80 backdrop-blur-sm rounded-xl shadow-sm p-6 mb-4">
                         <div className="min-h-[120px] flex items-center justify-center">
                             <p className="text-gray-700 text-lg text-center">
-                                {tips[currentTipIndex]}
+                                {message || tips[currentTipIndex]}
                             </p>
                         </div>
                     </div>

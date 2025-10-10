@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   clearPresentationData,
   setPresentationData,
   setStreaming,
+  setSaving,
+  setSaved,
 } from "@/store/slices/presentationGeneration";
 import { jsonrepair } from "jsonrepair";
 import { toast } from "sonner";
@@ -18,6 +21,8 @@ export const usePresentationStreaming = (
   fetchUserSlides: () => void
 ) => {
   const dispatch = useDispatch();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const previousSlidesLength = useRef(0);
   const streamingClientRef = useRef<StreamingClient | null>(null);
 
@@ -131,6 +136,38 @@ export const usePresentationStreaming = (
               }
               setLoading(false);
               dispatch(setStreaming(false));
+              
+              // Show saving indicator
+              dispatch(setSaving(true));
+              
+              // Update URL to remove stream parameter and show success message
+              const currentParams = new URLSearchParams(searchParams.toString());
+              if (currentParams.has('stream')) {
+                currentParams.delete('stream');
+                // Remove existing id parameter to avoid duplication
+                currentParams.delete('id');
+                // Add the presentation ID back
+                currentParams.set('id', presentationId);
+                const newUrl = `/presentation?${currentParams.toString()}`;
+                router.replace(newUrl, { scroll: false });
+                
+                // Simulate saving process and show success
+                setTimeout(() => {
+                  dispatch(setSaving(false));
+                  dispatch(setSaved(true));
+                  
+                  // Show success message
+                  toast.success("✅ Saved to Cloud", {
+                    description: "Your presentation has been automatically saved and is ready to use.",
+                    duration: 3000,
+                  });
+                  
+                  // Hide saved indicator after 3 seconds
+                  setTimeout(() => {
+                    dispatch(setSaved(false));
+                  }, 3000);
+                }, 1000); // 1 second delay to show saving indicator
+              }
             }
           }
         } catch (error) {
@@ -214,12 +251,18 @@ export const usePresentationStreaming = (
           throw new Error('Failed to fetch presentation');
         }
 
-        const presentation = await checkResponse.json();
+        const response = await checkResponse.json();
+        console.log('🔍 Presentation response:', response);
+
+        // Extract presentation data from the response
+        const presentation = response.data || response;
         console.log('🔍 Presentation data:', presentation);
 
         // Check if presentation has required fields
         if (!presentation.structure || !presentation.outlines) {
           console.log('❌ Presentation not prepared, showing error state');
+          console.log('🔍 Structure:', presentation.structure);
+          console.log('🔍 Outlines:', presentation.outlines);
           setLoading(false);
           dispatch(setStreaming(false));
           setError(true);
@@ -235,6 +278,29 @@ export const usePresentationStreaming = (
 
         // If presentation is prepared, check if we should stream or just fetch slides
         if (stream) {
+          // Check if presentation is already saved as final edit
+          try {
+            const checkResponse = await fetch(`/api/v1/presentation_final_edits/check/${presentationId}`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+              },
+            });
+
+            if (checkResponse.ok) {
+              const isAlreadySaved = await checkResponse.json();
+              if (isAlreadySaved) {
+                console.log('✅ Presentation already saved as final edit, loading from DB...');
+                fetchUserSlides();
+                setLoading(false);
+                dispatch(setStreaming(false));
+                return;
+              }
+            }
+          } catch (error) {
+            console.warn('⚠️ Failed to check if presentation is saved, proceeding with streaming:', error);
+          }
+
           console.log('✅ Presentation is prepared and stream requested, starting streaming...');
           // Start actual streaming to generate slides
           startStreaming(token);
