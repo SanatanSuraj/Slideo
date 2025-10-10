@@ -664,7 +664,16 @@ export const LayoutProvider: React.FC<{
 
 
   const getLayoutsByTemplateID = (templateID: string): LayoutInfo[] => {
-    return layoutData?.templateLayouts.get(templateID) || [];
+    const result = layoutData?.templateLayouts.get(templateID) || [];
+    console.log('🔍 LayoutContext - getLayoutsByTemplateID:', {
+      templateID,
+      hasLayoutData: !!layoutData,
+      hasTemplateLayouts: !!layoutData?.templateLayouts,
+      templateLayoutsKeys: layoutData?.templateLayouts ? Array.from(layoutData.templateLayouts.keys()) : [],
+      resultCount: result.length,
+      result: result
+    });
+    return result;
   };
 
   const getTemplateSetting = (templateID: string): TemplateSetting | null => {

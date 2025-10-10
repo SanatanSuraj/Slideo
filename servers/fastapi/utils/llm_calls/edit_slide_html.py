@@ -50,6 +50,8 @@ def get_user_prompt(prompt: str, html: str):
 async def get_edited_slide_html(prompt: str, html: str):
     model = get_model()
 
+    # Initialize LLM client lazily to ensure environment variables are set
+    from services.llm_client import LLMClient
     client = LLMClient()
     try:
         response = await client.generate(

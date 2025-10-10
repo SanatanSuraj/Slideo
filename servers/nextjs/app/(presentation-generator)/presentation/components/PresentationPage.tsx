@@ -41,7 +41,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   );
 
   // Auto-save functionality
-  const { isSaving } = useAutoSave({
+  const { isSaving, manualSave } = useAutoSave({
     debounceMs: 2000,
     enabled: !!presentationData && !isStreaming,
   });

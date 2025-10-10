@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import puppeteer from "puppeteer";
+import html2canvas from "html2canvas";
 
 import { sanitizeFilename } from "@/app/(presentation-generator)/utils/others";
 import { NextResponse, NextRequest } from "next/server";
@@ -15,8 +16,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`🔧 PDF Export: Starting export for presentation ${id}`);
-    console.log(`🔧 PDF Export: Token provided: ${token ? 'Yes' : 'No'}`);
+    console.log(`🔧 PDF Canvas Export: Starting export for presentation ${id}`);
+    console.log(`🔧 PDF Canvas Export: Token provided: ${token ? 'Yes' : 'No'}`);
 
     const browser = await puppeteer.launch({
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -42,10 +43,10 @@ export async function POST(req: NextRequest) {
 
     // If token is provided, set it in localStorage before navigating
     if (token) {
-      console.log(`🔧 PDF Export: Setting authentication token in browser context`);
+      console.log(`🔧 PDF Canvas Export: Setting authentication token in browser context`);
       await page.evaluateOnNewDocument((authToken) => {
         localStorage.setItem('authToken', authToken);
-        console.log('🔧 PDF Export: Token set in localStorage');
+        console.log('🔧 PDF Canvas Export: Token set in localStorage');
       }, token);
     }
 
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     const pdfMakerUrl = token 
       ? `http://localhost:3000/pdf-maker?id=${id}&token=${encodeURIComponent(token)}`
       : `http://localhost:3000/pdf-maker?id=${id}`;
-    console.log(`🔧 PDF Export: Navigating to ${pdfMakerUrl}`);
+    console.log(`🔧 PDF Canvas Export: Navigating to ${pdfMakerUrl}`);
     
     await page.goto(pdfMakerUrl, {
       waitUntil: "networkidle0",
@@ -62,18 +63,15 @@ export async function POST(req: NextRequest) {
 
     await page.waitForFunction('() => document.readyState === "complete"');
 
-    // Wait for the presentation to load (check for slides or error state)
+    // Wait for the presentation to load
     try {
       await page.waitForFunction(
         `
         () => {
-          // Check if we have slides loaded with actual content
           const slides = document.querySelectorAll('[data-speaker-note]');
           if (slides.length > 0) {
-            // Check if slides have actual content (not just skeletons)
             const slideContent = document.querySelectorAll('[data-speaker-note] > div');
             if (slideContent.length > 0) {
-              // Check if content is not just loading skeletons
               const hasRealContent = Array.from(slideContent).some(slide => {
                 const text = slide.textContent || '';
                 const hasText = text.trim().length > 0;
@@ -87,13 +85,11 @@ export async function POST(req: NextRequest) {
             }
           }
           
-          // Check if we're in error state
           const errorElement = document.querySelector('.bg-red-500, .text-red-500, [role="alert"]');
           if (errorElement) {
             return 'error';
           }
           
-          // Check if still loading
           const skeletons = document.querySelectorAll('.bg-gray-400');
           if (skeletons.length > 0) {
             return false;
@@ -109,15 +105,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Wait for all images to load
-    console.log(`🔧 PDF Export: Waiting for images to load...`);
+    console.log(`🔧 PDF Canvas Export: Waiting for images to load...`);
     await page.evaluate(async () => {
       const images = Array.from(document.querySelectorAll('img'));
       const imagePromises = images.map(img => {
         if (img.complete) return Promise.resolve();
         return new Promise((resolve, reject) => {
           img.onload = resolve;
-          img.onerror = resolve; // Don't fail on broken images
-          // Timeout after 10 seconds
+          img.onerror = resolve;
           setTimeout(resolve, 10000);
         });
       });
@@ -134,7 +129,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (isErrorState) {
-      console.log("❌ PDF Export: Error state detected, generating error PDF");
+      console.log("❌ PDF Canvas Export: Error state detected, generating error PDF");
       browser.close();
       return NextResponse.json(
         { error: "Failed to load presentation for PDF export" },
@@ -142,57 +137,85 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Wait longer for layout and content to fully render
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
-    console.log(`🔧 PDF Export: Generating PDF...`);
+    // Use html2canvas to capture each slide individually
+    console.log(`🔧 PDF Canvas Export: Capturing slides with html2canvas...`);
     
-    // Get the actual content height to ensure all slides are captured
-    const contentHeight = await page.evaluate(() => {
-      const slidesWrapper = document.getElementById('presentation-slides-wrapper');
-      if (slidesWrapper) {
-        return slidesWrapper.scrollHeight;
+    const slideImages = await page.evaluate(async () => {
+      const slides = Array.from(document.querySelectorAll('[data-speaker-note]'));
+      const slideImages = [];
+      
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i];
+        
+        // Scroll the slide into view
+        slide.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Capture the slide using html2canvas
+        const canvas = await html2canvas(slide as HTMLElement, {
+          backgroundColor: '#ffffff',
+          scale: 2, // Higher resolution
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          width: 1280,
+          height: 720,
+          scrollX: 0,
+          scrollY: 0,
+        });
+        
+        slideImages.push(canvas.toDataURL('image/png'));
       }
-      return 720; // fallback height
+      
+      return slideImages;
     });
-    
-    console.log(`🔧 PDF Export: Content height: ${contentHeight}px`);
-    
-    const pdfBuffer = await page.pdf({
-      width: "1280px",
-      height: `${Math.max(contentHeight, 720)}px`, // Use actual content height or minimum 720px
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      preferCSSPageSize: false,
-      displayHeaderFooter: false,
-    });
+
+    console.log(`🔧 PDF Canvas Export: Captured ${slideImages.length} slides`);
+
+    // Create a PDF from the captured images
+    const pdfBuffer = await page.evaluate(async (images) => {
+      // Import jsPDF dynamically
+      const { jsPDF } = await import('jspdf');
+      
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [1280, 720]
+      });
+      
+      images.forEach((imageData, index) => {
+        if (index > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imageData, 'PNG', 0, 0, 1280, 720);
+      });
+      
+      return pdf.output('arraybuffer');
+    }, slideImages);
 
     browser.close();
 
     const sanitizedTitle = sanitizeFilename(title ?? "presentation");
-    // Use absolute path to ensure file is created in the correct location
-    // Go up from servers/nextjs to project root, then to app_data
     const projectRoot = path.resolve(process.cwd(), "../../");
     const appDataDir = path.join(projectRoot, "app_data");
     const destinationPath = path.resolve(
       appDataDir,
       "exports",
-      `${sanitizedTitle}.pdf`
+      `${sanitizedTitle}-canvas.pdf`
     );
     await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
-    await fs.promises.writeFile(destinationPath, pdfBuffer);
+    await fs.promises.writeFile(destinationPath, Buffer.from(pdfBuffer));
 
-    // Return a URL path that can be accessed via the rewrite rule
     const relativePath = path.relative(path.resolve(appDataDir), destinationPath);
     const downloadUrl = `/app_data/${relativePath.replace(/\\/g, '/')}`;
     
-    console.log(`✅ PDF Export: Successfully generated PDF at ${downloadUrl}`);
+    console.log(`✅ PDF Canvas Export: Successfully generated PDF at ${downloadUrl}`);
     return NextResponse.json({
       success: true,
       path: downloadUrl,
     });
   } catch (error: any) {
-    console.error("PDF export error:", error);
+    console.error("PDF canvas export error:", error);
     return NextResponse.json(
       { error: "Failed to export PDF", details: error.message },
       { status: 500 }

@@ -1,6 +1,20 @@
 import os
 
 
+def get_env_variable(key: str, default: str = None) -> str:
+    """
+    Get environment variable with optional default value
+    
+    Args:
+        key: Environment variable name
+        default: Default value if environment variable is not set
+        
+    Returns:
+        Environment variable value or default
+    """
+    return os.getenv(key, default)
+
+
 def get_can_change_keys_env():
     return os.getenv("CAN_CHANGE_KEYS")
 

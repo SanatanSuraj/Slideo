@@ -20,7 +20,8 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
     getTemplateSetting,
     getAllTemplateIDs,
     getFullDataByTemplateID,
-    loading
+    loading,
+    getAllLayouts
   } = useLayout();
 
   const [summaryMap, setSummaryMap] = React.useState<Record<string, { lastUpdatedAt?: number; name?: string; description?: string }>>({});
@@ -69,6 +70,13 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
     const templates = getAllTemplateIDs();
     console.log('🔍 TemplateSelection - getAllTemplateIDs():', templates);
     console.log('🔍 TemplateSelection - loading:', loading);
+    
+    // Debug: Check what layouts are available for each template
+    templates.forEach(templateId => {
+      const layouts = getLayoutsByTemplateID(templateId);
+      console.log(`🔍 TemplateSelection - Template ${templateId} has ${layouts.length} layouts:`, layouts);
+    });
+    
     if (templates.length === 0) {
       console.log('🔍 TemplateSelection - No templates found, returning empty array');
       return [];
@@ -104,7 +112,7 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
     
     console.log('🔍 TemplateSelection - Final templates:', sortedTemplates);
     return sortedTemplates;
-  }, [getAllTemplateIDs, getLayoutsByTemplateID, getTemplateSetting, getFullDataByTemplateID, summaryMap]);
+  }, [getAllTemplateIDs, getLayoutsByTemplateID, getTemplateSetting, getFullDataByTemplateID, summaryMap, loading]);
 
   const inBuiltTemplates = React.useMemo(
     () => templates.filter(g => !g.id.toLowerCase().startsWith("custom-")),
@@ -118,16 +126,21 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
 
   // Auto-select first template when templates are loaded
   useEffect(() => {
-    if (templates.length > 0 && !selectedTemplate) {
+    if (templates.length > 0 && !selectedTemplate && !loading) {
       const defaultTemplate = templates.find(g => g.default) || templates[0];
       const slides = getLayoutsByTemplateID(defaultTemplate.id);
-
-      onSelectTemplate({
-        ...defaultTemplate,
+      console.log('🔍 TemplateSelection - Auto-selection:', {
+        defaultTemplateId: defaultTemplate.id,
+        defaultTemplateName: defaultTemplate.name,
+        slidesCount: slides.length,
         slides: slides,
+        loading: loading
       });
+
+      // Use handleTemplateSelection for auto-selection to ensure proper validation
+      handleTemplateSelection(defaultTemplate);
     }
-  }, [templates, selectedTemplate, onSelectTemplate]);
+  }, [templates, selectedTemplate, loading]);
   useEffect(() => {
     if (loading) {
       return;
@@ -181,11 +194,77 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
   }
 
   const handleTemplateSelection = (template: Template) => {
+    console.log('🔍 TemplateSelection - handleTemplateSelection called:', {
+      templateId: template.id,
+      templateName: template.name,
+      loading: loading
+    });
+    
+    // Check if layout data is loaded
+    if (loading) {
+      console.warn('🔍 TemplateSelection - Layout data still loading, cannot select template yet');
+      return;
+    }
+    
+    // Check if we have any layouts loaded at all
+    const allLayouts = getAllLayouts();
+    if (allLayouts.length === 0) {
+      console.warn('🔍 TemplateSelection - No layouts loaded yet, cannot select template');
+      return;
+    }
+    
     const slides = getLayoutsByTemplateID(template.id);
+    console.log('🔍 TemplateSelection - handleTemplateSelection:', {
+      templateId: template.id,
+      templateName: template.name,
+      slidesCount: slides.length,
+      slides: slides,
+      loading: loading,
+      totalLayouts: allLayouts.length
+    });
+    
+    // Always call onSelectTemplate, even if slides.length is 0
+    // This ensures the template is visually selected
     onSelectTemplate({
       ...template,
       slides: slides,
     });
+    
+    // If no slides found, try to get them again after a short delay
+    if (slides.length === 0) {
+      console.warn('🔍 TemplateSelection - No slides found, retrying after delay...');
+      setTimeout(() => {
+        const retrySlides = getLayoutsByTemplateID(template.id);
+        console.log('🔍 TemplateSelection - Retry result:', {
+          templateId: template.id,
+          slidesCount: retrySlides.length,
+          slides: retrySlides
+        });
+        
+        // Update the template with the retry slides
+        onSelectTemplate({
+          ...template,
+          slides: retrySlides,
+        });
+        
+        // If still no slides, try one more time with a longer delay
+        if (retrySlides.length === 0) {
+          console.warn('🔍 TemplateSelection - Still no slides found, trying again with longer delay...');
+          setTimeout(() => {
+            const finalRetrySlides = getLayoutsByTemplateID(template.id);
+            console.log('🔍 TemplateSelection - Final retry result:', {
+              templateId: template.id,
+              slidesCount: finalRetrySlides.length,
+              slides: finalRetrySlides
+            });
+            onSelectTemplate({
+              ...template,
+              slides: finalRetrySlides,
+            });
+          }, 500);
+        }
+      }, 100);
+    }
   }
 
   return (
@@ -198,7 +277,7 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
             <TemplateLayouts
               key={template.id}
               template={template}
-              onSelectTemplate={onSelectTemplate}
+              onSelectTemplate={handleTemplateSelection}
               selectedTemplate={selectedTemplate}
             />
           ))}

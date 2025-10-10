@@ -135,9 +135,20 @@ export class PresentationGenerationApi {
 
   static async updatePresentationContent(body: any) {
     try {
+      console.log('🔄 Starting presentation content update:', {
+        presentationId: body?.id,
+        slidesCount: body?.slides?.length
+      });
+
       // Transform frontend slide format to backend format
       const transformedBody = this.transformPresentationDataForBackend(body);
       
+      console.log('🔄 Sending update request to backend:', {
+        url: '/api/v1/ppt/presentation/update',
+        method: 'PATCH',
+        bodySize: JSON.stringify(transformedBody).length
+      });
+
       const response = await fetchWithAuth(
         `/api/v1/ppt/presentation/update`,
         {
@@ -147,9 +158,27 @@ export class PresentationGenerationApi {
         }
       );
       
-      return await ApiResponseHandler.handleResponse(response, "Failed to update presentation content");
+      console.log('🔄 Received response from backend:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      const result = await ApiResponseHandler.handleResponse(response, "Failed to update presentation content");
+      
+      console.log('✅ Presentation content update successful:', {
+        presentationId: body?.id,
+        result: result
+      });
+
+      return result;
     } catch (error) {
-      console.error("error in presentation content update", error);
+      console.error("❌ Error in presentation content update:", {
+        error: error,
+        presentationId: body?.id,
+        slidesCount: body?.slides?.length,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw error;
     }
   }
@@ -157,25 +186,55 @@ export class PresentationGenerationApi {
   private static transformPresentationDataForBackend(presentationData: any) {
     if (!presentationData) return presentationData;
 
+    console.log('🔄 Transforming presentation data for backend:', {
+      presentationId: presentationData.id,
+      slidesCount: presentationData.slides?.length,
+      hasSlides: !!presentationData.slides
+    });
+
     const transformedData = {
       id: presentationData.id,
       n_slides: presentationData.n_slides,
       title: presentationData.title,
-      slides: presentationData.slides ? presentationData.slides.map((slide: any) => ({
-        id: slide.id,
-        presentation_id: presentationData.id,
-        slide_number: slide.index || 0,
-        content: typeof slide.content === 'string' ? slide.content : JSON.stringify(slide.content),
-        layout: slide.layout || null,
-        layout_group: slide.layout_group || null,
-        notes: slide.speaker_note || slide.notes || null,
-        images: slide.images ? slide.images.map((img: any) => typeof img === 'string' ? { url: img } : img) : null,
-        shapes: slide.shapes || null,
-        text_boxes: slide.text_boxes || null,
-        created_at: slide.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })) : null
+      slides: presentationData.slides ? presentationData.slides.map((slide: any, index: number) => {
+        // Ensure content is properly formatted
+        let content = slide.content;
+        if (typeof content === 'object' && content !== null) {
+          content = JSON.stringify(content);
+        } else if (typeof content !== 'string') {
+          content = String(content || '');
+        }
+
+        const transformedSlide = {
+          id: slide.id,
+          presentation_id: presentationData.id,
+          slide_number: slide.index !== undefined ? slide.index : index,
+          content: content,
+          layout: slide.layout || null,
+          layout_group: slide.layout_group || null,
+          notes: slide.speaker_note || slide.notes || null,
+          images: slide.images ? slide.images.map((img: any) => typeof img === 'string' ? { url: img } : img) : null,
+          shapes: slide.shapes || null,
+          text_boxes: slide.text_boxes || null,
+          created_at: slide.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        console.log(`🔄 Transformed slide ${index}:`, {
+          id: transformedSlide.id,
+          slide_number: transformedSlide.slide_number,
+          contentLength: transformedSlide.content?.length,
+          hasLayout: !!transformedSlide.layout
+        });
+
+        return transformedSlide;
+      }) : null
     };
+
+    console.log('✅ Transformation complete:', {
+      presentationId: transformedData.id,
+      slidesCount: transformedData.slides?.length
+    });
 
     return transformedData;
   }

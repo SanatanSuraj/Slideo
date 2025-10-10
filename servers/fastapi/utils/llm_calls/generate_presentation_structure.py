@@ -59,6 +59,10 @@ def get_messages(
                 User intruction should be taken into account while creating the presentation structure, except for number of slides.
 
                 Select layout index for each of the {n_slides} slides based on what will best serve the presentation's goals.
+                
+                IMPORTANT: Return ONLY a JSON object with a "slides" field containing an array of integers (layout indexes). Each integer should be between 0 and {len(presentation_layout.slides)-1}.
+                
+                Example format: {{"slides": [0, 2, 1, 0, 3]}}
             """,
         ),
         LLMUserMessage(
@@ -90,6 +94,10 @@ def get_messages_for_slides_markdown(
                 User intruction should be taken into account while creating the presentation structure, except for number of slides.
 
                 Select layout index for each of the {n_slides} slides based on what will best serve the presentation's goals.
+                
+                IMPORTANT: Return ONLY a JSON object with a "slides" field containing an array of integers (layout indexes). Each integer should be between 0 and {len(presentation_layout.slides)-1}.
+                
+                Example format: {{"slides": [0, 2, 1, 0, 3]}}
             """,
         ),
         LLMUserMessage(

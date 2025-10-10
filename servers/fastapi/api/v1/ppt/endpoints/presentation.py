@@ -77,22 +77,41 @@ PRESENTATION_ROUTER = APIRouter(prefix="/presentation", tags=["Presentation"])
 
 @PRESENTATION_ROUTER.get("/all", response_model=List[PresentationWithSlides])
 async def get_all_presentations(current_user: User = Depends(get_current_active_user)):
-    presentations = await presentation_crud.get_presentations_by_user(str(current_user.id))
-    presentations_with_slides = []
-    
-    for presentation in presentations:
-        # Get first slide for each presentation
-        slides = await slide_crud.get_slides_by_presentation(presentation.id)
-        first_slide = slides[0] if slides else None
+    try:
+        print(f"🔄 Getting all presentations for user: {current_user.id}")
         
-        presentations_with_slides.append(
-            PresentationWithSlides.from_dict({
-                **presentation.dict(),
-                "slides": [first_slide] if first_slide else [],
-            })
+        presentations = await presentation_crud.get_presentations_by_user(str(current_user.id))
+        print(f"🔄 Found {len(presentations)} presentations in database")
+        
+        presentations_with_slides = []
+        
+        for i, presentation in enumerate(presentations):
+            print(f"🔄 Processing presentation {i+1}: {presentation.id} - {presentation.title}")
+            
+            # Get first slide for each presentation
+            slides = await slide_crud.get_slides_by_presentation(presentation.id)
+            first_slide = slides[0] if slides else None
+            
+            print(f"🔄 Presentation {presentation.id} has {len(slides)} slides")
+            
+            presentations_with_slides.append(
+                PresentationWithSlides.from_dict({
+                    **presentation.dict(),
+                    "slides": [first_slide] if first_slide else [],
+                })
+            )
+        
+        print(f"✅ Returning {len(presentations_with_slides)} presentations with slides")
+        return jsonable_encoder(presentations_with_slides)
+        
+    except Exception as e:
+        print(f"❌ Error getting presentations for user {current_user.id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
-    
-    return jsonable_encoder(presentations_with_slides)
 
 
 @PRESENTATION_ROUTER.get("/{id}", response_model=PresentationWithSlides)
@@ -147,6 +166,9 @@ async def create_presentation(
 ):
     try:
         # Log incoming request details
+        print(f"📝 Creating presentation for user: {current_user.id}")
+        print(f"📝 Request payload: content='{content[:50]}...', n_slides={n_slides}, language={language}")
+        print(f"📝 User details: id={current_user.id}, email={getattr(current_user, 'email', 'N/A')}")
         logger.info(f"📝 Creating presentation for user: {current_user.id}")
         logger.info(f"📝 Request payload: content='{content[:50]}...', n_slides={n_slides}, language={language}")
         logger.info(f"📝 User details: id={current_user.id}, email={getattr(current_user, 'email', 'N/A')}")
@@ -472,8 +494,10 @@ async def stream_presentation(
 
             # This will mutate slide and add placeholder assets
             process_slide_add_placeholder_assets(slide)
+            print(f"🖼️ Added placeholder assets to slide {i}")
 
             # This will mutate slide
+            print(f"🖼️ Starting image generation for slide {i}")
             async_assets_generation_tasks.append(
                 process_slide_and_fetch_assets(image_generation_service, slide)
             )
@@ -488,10 +512,19 @@ async def stream_presentation(
             data=json.dumps({"type": "chunk", "chunk": " ] }"}),
         ).to_string()
 
+        print(f"🖼️ Waiting for {len(async_assets_generation_tasks)} asset generation tasks to complete...")
         generated_assets_lists = await asyncio.gather(*async_assets_generation_tasks)
         generated_assets = []
         for assets_list in generated_assets_lists:
             generated_assets.extend(assets_list)
+
+        print(f"🖼️ Asset generation completed. Generated {len(generated_assets)} assets")
+        print(f"🖼️ Sending updated slides with real images to frontend")
+        for slide in slides:
+            yield SSEResponse(
+                event="response",
+                data=json.dumps({"type": "chunk", "chunk": slide.model_dump_json()}),
+            ).to_string()
 
         # Moved this here to make sure new slides are generated before deleting the old ones
         await slide_crud.delete_slides_by_presentation(str(id))
@@ -534,50 +567,85 @@ async def update_presentation(
     slides: Annotated[Optional[List[SlideUpdateFromFrontend]], Body()] = None,
     current_user: User = Depends(get_current_active_user),
 ):
-    presentation = await presentation_crud.get_presentation_by_id(str(id))
-    if not presentation:
-        raise HTTPException(status_code=404, detail="Presentation not found")
+    try:
+        print(f"🔄 Updating presentation: {id}")
+        print(f"🔄 User: {current_user.id}")
+        print(f"🔄 Slides count: {len(slides) if slides else 0}")
+        
+        presentation = await presentation_crud.get_presentation_by_id(str(id))
+        if not presentation:
+            print(f"❌ Presentation not found: {id}")
+            raise HTTPException(status_code=404, detail="Presentation not found")
 
-    presentation_update_dict = {}
-    if n_slides:
-        presentation_update_dict["n_slides"] = n_slides
-    if title:
-        presentation_update_dict["title"] = title
+        # Check if user owns the presentation
+        if presentation.user_id != str(current_user.id):
+            print(f"❌ User {current_user.id} not authorized to update presentation {id}")
+            raise HTTPException(status_code=403, detail="Not authorized to update this presentation")
 
-    if n_slides or title:
-        presentation_update = PresentationUpdate(**presentation_update_dict)
-        await presentation_crud.update_presentation(str(id), presentation_update)
+        presentation_update_dict = {}
+        if n_slides:
+            presentation_update_dict["n_slides"] = n_slides
+        if title:
+            presentation_update_dict["title"] = title
 
-    if slides:
-        # Process slides from frontend format
-        for slide in slides:
-            if slide.id:
-                slide_update_data = {
-                    "content": slide.content,
-                    "layout": slide.layout,
-                    "layout_group": slide.layout_group,
-                    "notes": slide.notes,
-                    "images": slide.images,
-                    "shapes": slide.shapes,
-                    "text_boxes": slide.text_boxes
-                }
-                # Remove None values
-                slide_update_data = {k: v for k, v in slide_update_data.items() if v is not None}
-                
-                if slide_update_data:
-                    from models.mongo.slide import SlideUpdate
-                    slide_update = SlideUpdate(**slide_update_data)
-                    await slide_crud.update_slide(slide.id, slide_update)
+        if n_slides or title:
+            print(f"🔄 Updating presentation metadata: {presentation_update_dict}")
+            presentation_update = PresentationUpdate(**presentation_update_dict)
+            await presentation_crud.update_presentation(str(id), presentation_update)
 
-    # Commit operations handled by CRUD
+        if slides:
+            print(f"🔄 Processing {len(slides)} slides for update")
+            # Process slides from frontend format
+            for i, slide in enumerate(slides):
+                if slide.id:
+                    print(f"🔄 Updating slide {i}: {slide.id}")
+                    slide_update_data = {
+                        "content": slide.content,
+                        "layout": slide.layout,
+                        "layout_group": slide.layout_group,
+                        "notes": slide.notes,
+                        "images": slide.images,
+                        "shapes": slide.shapes,
+                        "text_boxes": slide.text_boxes
+                    }
+                    # Remove None values
+                    slide_update_data = {k: v for k, v in slide_update_data.items() if v is not None}
+                    
+                    if slide_update_data:
+                        print(f"🔄 Slide update data: {list(slide_update_data.keys())}")
+                        from models.mongo.slide import SlideUpdate
+                        slide_update = SlideUpdate(**slide_update_data)
+                        await slide_crud.update_slide(slide.id, slide_update)
+                        print(f"✅ Slide {slide.id} updated successfully")
+                    else:
+                        print(f"⚠️ No data to update for slide {slide.id}")
+                else:
+                    print(f"⚠️ Slide {i} has no ID, skipping")
 
-    # Get updated slides from database
-    updated_slides = await slide_crud.get_slides_by_presentation(str(id))
-    
-    return jsonable_encoder(PresentationWithSlides.from_dict({
-        **presentation.model_dump(),
-        "slides": updated_slides or [],
-    }))
+        # Get updated slides from database
+        print(f"🔄 Fetching updated slides for presentation {id}")
+        updated_slides = await slide_crud.get_slides_by_presentation(str(id))
+        print(f"✅ Retrieved {len(updated_slides) if updated_slides else 0} slides")
+        
+        result = jsonable_encoder(PresentationWithSlides.from_dict({
+            **presentation.model_dump(),
+            "slides": updated_slides or [],
+        }))
+        
+        print(f"✅ Presentation update completed successfully: {id}")
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are already properly formatted
+        raise
+    except Exception as e:
+        print(f"❌ Error updating presentation {id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @PRESENTATION_ROUTER.post("/export/pptx", response_model=str)
@@ -615,6 +683,8 @@ async def export_presentation_as_pptx_or_pdf(
         id,
         presentation.title or str(uuid.uuid4()),
         export_as,
+        user_id=str(current_user.id),
+        save_to_mongodb=True
     )
 
     return jsonable_encoder(PresentationPathAndEditPath(

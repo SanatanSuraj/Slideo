@@ -97,13 +97,58 @@ async def stream_outlines(
                 presentation_outlines_json = dict(
                     dirtyjson.loads(presentation_outlines_text)
                 )
+                
+                # Check if the JSON has the expected structure
+                if "slides" not in presentation_outlines_json:
+                    print("⚠️ JSON missing 'slides' field, attempting to transform structure")
+                    
+                    # Try to transform different possible structures
+                    if "presentation" in presentation_outlines_json:
+                        # Handle case where LLM returns {"presentation": {...}}
+                        presentation_data = presentation_outlines_json["presentation"]
+                        if isinstance(presentation_data, dict) and "content" in presentation_data:
+                            presentation_outlines_json = {
+                                "slides": [
+                                    {
+                                        "content": presentation_data["content"]
+                                    }
+                                ]
+                            }
+                        else:
+                            # Wrap the entire presentation data as a single slide
+                            presentation_outlines_json = {
+                                "slides": [
+                                    {
+                                        "content": str(presentation_data)
+                                    }
+                                ]
+                            }
+                    elif "content" in presentation_outlines_json:
+                        # Handle case where LLM returns {"content": "..."}
+                        presentation_outlines_json = {
+                            "slides": [
+                                {
+                                    "content": presentation_outlines_json["content"]
+                                }
+                            ]
+                        }
+                    else:
+                        # If we can't find expected fields, wrap the entire JSON as a single slide
+                        presentation_outlines_json = {
+                            "slides": [
+                                {
+                                    "content": str(presentation_outlines_json)
+                                }
+                            ]
+                        }
+                    print("✅ Transformed JSON structure to expected format")
+                
             except Exception as json_error:
                 print("⚠️ JSON parsing failed, attempting to wrap as plain text outline")
                 # If JSON parsing fails, wrap the text as a basic outline structure
                 presentation_outlines_json = {
                     "slides": [
                         {
-                            "title": "Generated Outline",
                             "content": presentation_outlines_text
                         }
                     ]
@@ -117,7 +162,39 @@ async def stream_outlines(
             ).to_string()
             return
 
-        presentation_outlines = PresentationOutlineModel(**presentation_outlines_json)
+        try:
+            presentation_outlines = PresentationOutlineModel(**presentation_outlines_json)
+        except Exception as model_error:
+            print(f"❌ Failed to create PresentationOutlineModel: {model_error}")
+            print(f"📋 JSON structure: {presentation_outlines_json}")
+            # Try to create a fallback structure
+            if isinstance(presentation_outlines_json, dict) and "slides" in presentation_outlines_json:
+                # If slides exist but validation fails, try to fix the structure
+                slides = presentation_outlines_json["slides"]
+                if isinstance(slides, list) and len(slides) > 0:
+                    # Ensure each slide has the required content field
+                    fixed_slides = []
+                    for slide in slides:
+                        if isinstance(slide, dict):
+                            if "content" in slide:
+                                fixed_slides.append({"content": slide["content"]})
+                            elif "slideContent" in slide:
+                                # Map slideContent to content
+                                fixed_slides.append({"content": slide["slideContent"]})
+                            else:
+                                # If no content field, use the entire slide as content
+                                fixed_slides.append({"content": str(slide)})
+                        else:
+                            # If slide is not a dict, convert to string
+                            fixed_slides.append({"content": str(slide)})
+                    
+                    presentation_outlines_json = {"slides": fixed_slides}
+                    print("🔧 Attempting to fix slide structure")
+                    presentation_outlines = PresentationOutlineModel(**presentation_outlines_json)
+                else:
+                    raise model_error
+            else:
+                raise model_error
 
         presentation_outlines.slides = presentation_outlines.slides[
             :n_slides_to_generate

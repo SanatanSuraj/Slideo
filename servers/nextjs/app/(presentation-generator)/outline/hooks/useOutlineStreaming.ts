@@ -112,7 +112,7 @@ export const useOutlineStreaming = (presentationId: string | null, onStreamingCo
                 
                 if (data?.presentation?.outlines?.slides && Array.isArray(data.presentation.outlines.slides)) {
                   // ✅ Standard structured response
-                  outlinesData = data.presentation.outlines.slides;
+              
                   console.log("✅ Using structured slides from presentation.outlines.slides");
                 } else if (data?.presentation?.outlines && typeof data.presentation.outlines === "string") {
                   // ✅ Plain text outline in presentation.outlines
@@ -129,7 +129,9 @@ export const useOutlineStreaming = (presentationId: string | null, onStreamingCo
                     const parsedData = JSON.parse(repairedJson);
                     
                     if (parsedData && Array.isArray(parsedData.slides)) {
-                      outlinesData = parsedData.slides;
+                      outlinesData = parsedData.slides.map((slide: any) => ({
+                        content: slide.content || slide.slideContent || slide
+                      }));
                       console.log("✅ Using slides from accumulated chunks");
                     } else if (parsedData && typeof parsedData.outline === "string") {
                       console.log("🧠 Frontend: Received plain text outline in accumulated chunks, wrapping into slide format");

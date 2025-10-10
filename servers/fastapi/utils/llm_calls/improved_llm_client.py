@@ -9,8 +9,20 @@ from services.llm_client import LLMClient
 
 class ImprovedLLMClient:
     def __init__(self):
-        self.llm_client = LLMClient()
-        self.provider = self.llm_client.llm_provider.value
+        self._llm_client = None
+        self._provider = None
+    
+    @property
+    def llm_client(self):
+        if self._llm_client is None:
+            self._llm_client = LLMClient()
+        return self._llm_client
+    
+    @property
+    def provider(self):
+        if self._provider is None:
+            self._provider = self.llm_client.llm_provider.value
+        return self._provider
 
     async def generate_slide_content(
         self,

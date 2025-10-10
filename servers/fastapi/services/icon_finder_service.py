@@ -15,9 +15,21 @@ class IconFinderService:
         if self._icons_cache is None:
             try:
                 with open(self.icons_data_path, 'r') as f:
-                    self._icons_cache = json.load(f)
-            except FileNotFoundError:
-                # Return a default set of icons if the file doesn't exist
+                    icons_data = json.load(f)
+                    # Extract icons from the complex structure
+                    self._icons_cache = {}
+                    if "icons" in icons_data:
+                        for icon in icons_data["icons"]:
+                            icon_name = icon.get("name", "")
+                            tags = icon.get("tags", "").split(",") if icon.get("tags") else []
+                            # Add the icon name itself as a tag
+                            tags.append(icon_name)
+                            # Clean up tags
+                            tags = [tag.strip() for tag in tags if tag.strip()]
+                            self._icons_cache[icon_name] = tags
+            except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
+                print(f"⚠️ ICON SERVICE: Error loading icons.json: {e}")
+                # Return a default set of icons if the file doesn't exist or is malformed
                 self._icons_cache = {
                     "search": ["search", "magnifying-glass", "find"],
                     "user": ["user", "person", "profile"],
@@ -53,11 +65,13 @@ class IconFinderService:
         icons_data = self._load_icons()
         query_lower = query.lower()
         
-        # Simple search through icon categories
+        # Search through icon names and their tags
         matching_icons = []
-        for category, keywords in icons_data.items():
-            if any(keyword in query_lower for keyword in keywords):
-                matching_icons.append(category)
+        for icon_name, tags in icons_data.items():
+            # Check if query matches icon name or any of its tags
+            if (query_lower in icon_name.lower() or 
+                any(query_lower in tag.lower() for tag in tags)):
+                matching_icons.append(icon_name)
         
         # If no matches found, return some default icons
         if not matching_icons:

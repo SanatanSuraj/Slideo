@@ -144,7 +144,11 @@ export function useRemoteSvgIcon(url?: string, options: RemoteSvgOptions = {}) {
         return;
       }
       try {
-       
+        // Check if URL is a placeholder that should be avoided
+        if (url.includes('example.com') || url.includes('placeholder')) {
+          throw new Error('Placeholder URL detected - using fallback icon');
+        }
+        
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
@@ -161,14 +165,42 @@ export function useRemoteSvgIcon(url?: string, options: RemoteSvgOptions = {}) {
         setError(null);
       } catch (e: any) {
         if (cancelled) return;
+        
+        // Enhanced error handling with CORS detection
+        const isCorsError = e?.message?.includes('CORS') || 
+                           e?.message?.includes('blocked') || 
+                           e?.message?.includes('Access-Control-Allow-Origin') ||
+                           e?.name === 'TypeError' && e?.message?.includes('Failed to fetch');
+        
+        const isPlaceholderError = e?.message?.includes('Placeholder URL detected');
+        
         setError(e?.message || "Failed to load SVG");
+        
+        // Create appropriate fallback icon based on error type
         const stroke = options.strokeColor || "currentColor";
         const fill = options.fillColor ?? "none";
         const cls = options.className ? ` class=\"${options.className}\"` : "";
-        setSvgMarkup(`<svg${cls} xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='${stroke}' fill='${fill}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10' fill='currentColor' opacity='0.12'></circle><path d='M8 12l3 3 5-6' fill='none'></path></svg>`);
+        
+        let fallbackIcon;
+        if (isCorsError || isPlaceholderError) {
+          // Use a warning icon for CORS/placeholder errors
+          fallbackIcon = `<svg${cls} xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='${stroke}' fill='${fill}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10' fill='currentColor' opacity='0.12'></circle><path d='M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z' fill='none'></path></svg>`;
+        } else {
+          // Use default checkmark icon for other errors
+          fallbackIcon = `<svg${cls} xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='${stroke}' fill='${fill}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10' fill='currentColor' opacity='0.12'></circle><path d='M8 12l3 3 5-6' fill='none'></path></svg>`;
+        }
+        
+        setSvgMarkup(fallbackIcon);
+        
         if (process.env.NODE_ENV !== "production") {
-          // eslint-disable-next-line no-console
-          console.warn("RemoteSvgIcon fetch error", e);
+          // Enhanced logging with error type detection
+          if (isCorsError) {
+            console.warn("RemoteSvgIcon CORS error - using fallback icon:", url, e);
+          } else if (isPlaceholderError) {
+            console.warn("RemoteSvgIcon placeholder URL detected - using fallback icon:", url);
+          } else {
+            console.warn("RemoteSvgIcon fetch error:", url, e);
+          }
         }
       }
     }

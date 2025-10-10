@@ -103,6 +103,8 @@ async def get_edited_slide_content(
         True,
     )
 
+    # Initialize LLM client lazily to ensure environment variables are set
+    from services.llm_client import LLMClient
     client = LLMClient()
     try:
         response = await client.generate_structured(

@@ -37,16 +37,27 @@ export class DashboardApi {
       );
       
       console.log('DashboardApi.getPresentations: Response status:', response.status);
+      console.log('DashboardApi.getPresentations: Response headers:', Object.fromEntries(response.headers.entries()));
       
       // Handle the special case where 404 means "no presentations found"
       if (response.status === 404) {
-        console.log("No presentations found");
+        console.log("No presentations found - returning empty array");
         return [];
       }
       
-      return await ApiResponseHandler.handleResponse(response, "Failed to fetch presentations");
+      const data = await ApiResponseHandler.handleResponse(response, "Failed to fetch presentations");
+      console.log('DashboardApi.getPresentations: Successfully fetched presentations:', {
+        count: data?.length || 0,
+        presentations: data?.map(p => ({ id: p.id, title: p.title, updated_at: p.updated_at })) || []
+      });
+      
+      return data;
     } catch (error) {
-      console.error("Error fetching presentations:", error);
+      console.error("Error fetching presentations:", {
+        error: error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw error;
     }
   }

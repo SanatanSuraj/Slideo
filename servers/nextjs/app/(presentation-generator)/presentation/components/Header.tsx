@@ -111,11 +111,19 @@ const Header = ({
       await PresentationGenerationApi.updatePresentationContent(presentationData);
 
       trackEvent(MixpanelEvent.Header_ExportAsPDF_API_Call);
+      
+      // Get authentication token from localStorage
+      const authToken = localStorage.getItem('authToken');
+      
       const response = await fetch('/api/export-as-pdf', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           id: presentation_id,
           title: presentationData?.title,
+          token: authToken,
         })
       });
 

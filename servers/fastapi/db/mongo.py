@@ -183,3 +183,6 @@ def get_vectors_collection():
 
 def get_webhooks_collection():
     return db.webhook_subscriptions
+
+def get_presentation_final_edits_collection():
+    return db.presentation_final_edits

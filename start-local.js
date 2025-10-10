@@ -67,6 +67,8 @@ const setupNodeModules = () => {
 
 process.env.USER_CONFIG_PATH = userConfigPath;
 process.env.APP_DATA_DIRECTORY = appDataDir;
+process.env.PUPPETEER_EXECUTABLE_PATH = "/opt/homebrew/bin/chromium";
+process.env.TEMP_DIRECTORY = "/tmp/presenton_temp";
 
 //? UserConfig is only setup if API Keys can be changed
 const setupUserConfigFromEnv = () => {

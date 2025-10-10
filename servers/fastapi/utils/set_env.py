@@ -75,3 +75,7 @@ def set_extended_reasoning_env(value):
 
 def set_web_grounding_env(value):
     os.environ["WEB_GROUNDING"] = value
+
+
+def set_app_data_directory_env(value):
+    os.environ["APP_DATA_DIRECTORY"] = value

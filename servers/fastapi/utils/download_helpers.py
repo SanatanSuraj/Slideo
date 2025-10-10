@@ -19,7 +19,13 @@ async def download_file(
         filename = os.path.basename(parsed_url.path)
 
         if not filename or "." not in filename:
-            async with aiohttp.ClientSession(trust_env=True) as session:
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
                 async with session.head(url, headers=headers) as response:
                     if response.status == 200:
                         content_disposition = response.headers.get(
@@ -41,7 +47,13 @@ async def download_file(
         filename = filename or str(uuid.uuid4())
         save_path = os.path.join(save_directory, filename)
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     with open(save_path, "wb") as file:

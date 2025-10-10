@@ -16,11 +16,17 @@ async def process_slide_and_fetch_assets(
 
     async_tasks = []
 
-    image_paths = get_dict_paths_with_key(slide.content, "__image_prompt__")
-    icon_paths = get_dict_paths_with_key(slide.content, "__icon_query__")
+    # Parse JSON content if it's a string
+    content = slide.content
+    if isinstance(content, str):
+        import json
+        content = json.loads(content)
+
+    image_paths = get_dict_paths_with_key(content, "__image_prompt__")
+    icon_paths = get_dict_paths_with_key(content, "__icon_query__")
 
     for image_path in image_paths:
-        __image_prompt__parent = get_dict_at_path(slide.content, image_path)
+        __image_prompt__parent = get_dict_at_path(content, image_path)
         async_tasks.append(
             image_generation_service.generate_image(
                 ImagePrompt(
@@ -30,9 +36,11 @@ async def process_slide_and_fetch_assets(
         )
 
     for icon_path in icon_paths:
-        __icon_query__parent = get_dict_at_path(slide.content, icon_path)
+        __icon_query__parent = get_dict_at_path(content, icon_path)
+        icon_query = __icon_query__parent["__icon_query__"]
+        print(f"🔍 ICON PROCESSING: Searching for icon with query: '{icon_query}' at path: {icon_path}")
         async_tasks.append(
-            ICON_FINDER_SERVICE.search_icons(__icon_query__parent["__icon_query__"])
+            ICON_FINDER_SERVICE.search_icons(icon_query)
         )
 
     results = await asyncio.gather(*async_tasks)
@@ -40,19 +48,34 @@ async def process_slide_and_fetch_assets(
 
     return_assets = []
     for image_path in image_paths:
-        image_dict = get_dict_at_path(slide.content, image_path)
+        image_dict = get_dict_at_path(content, image_path)
         result = results.pop()
         if isinstance(result, AssetInDB):
             return_assets.append(result)
-            image_dict["__image_url__"] = result.path
+            image_dict["__image_url__"] = result.file_path
         else:
             image_dict["__image_url__"] = result
-        set_dict_at_path(slide.content, image_path, image_dict)
+        set_dict_at_path(content, image_path, image_dict)
 
     for icon_path in icon_paths:
-        icon_dict = get_dict_at_path(slide.content, icon_path)
-        icon_dict["__icon_url__"] = results.pop()[0]
-        set_dict_at_path(slide.content, icon_path, icon_dict)
+        icon_dict = get_dict_at_path(content, icon_path)
+        icon_result = results.pop()
+        
+        # Enhanced error handling for icon processing
+        if icon_result and len(icon_result) > 0:
+            icon_url = icon_result[0]
+            print(f"✅ ICON SUCCESS: Found icon URL: {icon_url} for path: {icon_path}")
+            icon_dict["__icon_url__"] = icon_url
+        else:
+            # Fallback to placeholder icon if no results
+            fallback_url = "/static/icons/placeholder.svg"
+            print(f"⚠️ ICON FALLBACK: No icons found, using placeholder: {fallback_url} for path: {icon_path}")
+            icon_dict["__icon_url__"] = fallback_url
+        
+        set_dict_at_path(content, icon_path, icon_dict)
+    
+    # Update slide content with the modified content
+    slide.content = json.dumps(content)
 
     return return_assets
 
@@ -152,7 +175,7 @@ async def process_old_and_new_slides_and_fetch_assets(
             fetched_image = new_images[i]
             if isinstance(fetched_image, AssetInDB):
                 new_assets.append(fetched_image)
-                image_url = fetched_image.path
+                image_url = fetched_image.file_path
             else:
                 image_url = fetched_image
             new_image_dicts[i]["__image_url__"] = image_url
@@ -171,16 +194,31 @@ async def process_old_and_new_slides_and_fetch_assets(
 
 
 def process_slide_add_placeholder_assets(slide: SlideInDB):
+    """Add placeholder assets to slide content for immediate display"""
+    print(f"🔄 PLACEHOLDER PROCESSING: Adding placeholder assets to slide")
 
-    image_paths = get_dict_paths_with_key(slide.content, "__image_prompt__")
-    icon_paths = get_dict_paths_with_key(slide.content, "__icon_query__")
+    # Parse JSON content if it's a string
+    content = slide.content
+    if isinstance(content, str):
+        import json
+        content = json.loads(content)
+
+    image_paths = get_dict_paths_with_key(content, "__image_prompt__")
+    icon_paths = get_dict_paths_with_key(content, "__icon_query__")
+
+    print(f"📸 Found {len(image_paths)} image paths, {len(icon_paths)} icon paths")
 
     for image_path in image_paths:
-        image_dict = get_dict_at_path(slide.content, image_path)
+        image_dict = get_dict_at_path(content, image_path)
         image_dict["__image_url__"] = "/static/images/placeholder.jpg"
-        set_dict_at_path(slide.content, image_path, image_dict)
+        set_dict_at_path(content, image_path, image_dict)
+        print(f"📸 Added placeholder image at path: {image_path}")
 
     for icon_path in icon_paths:
-        icon_dict = get_dict_at_path(slide.content, icon_path)
+        icon_dict = get_dict_at_path(content, icon_path)
         icon_dict["__icon_url__"] = "/static/icons/placeholder.svg"
-        set_dict_at_path(slide.content, icon_path, icon_dict)
+        set_dict_at_path(content, icon_path, icon_dict)
+        print(f"🎨 Added placeholder icon at path: {icon_path}")
+    
+    # Update slide content with the modified content
+    slide.content = json.dumps(content)

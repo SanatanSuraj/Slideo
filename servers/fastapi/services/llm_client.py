@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 from fastapi import HTTPException
-# OpenAI imports removed - using Gemini only
+from openai import AsyncOpenAI
 from google import genai
 from google.genai.types import Content as GoogleContent, Part as GoogleContentPart
 from google.genai.types import (
@@ -99,10 +99,13 @@ class LLMClient:
                 )
 
     def _get_openai_client(self):
-        # OpenAI removed - using Gemini only
-        raise HTTPException(
-            status_code=400,
-            detail="OpenAI support has been removed. Please use Google Gemini instead.",
+        if not get_openai_api_key_env():
+            raise HTTPException(
+                status_code=400,
+                detail="OpenAI API Key is not set",
+            )
+        return AsyncOpenAI(
+            api_key=get_openai_api_key_env(),
         )
 
     def _get_google_client(self):
@@ -172,7 +175,7 @@ class LLMClient:
             message for message in messages if not isinstance(message, LLMSystemMessage)
         ]
 
-    # ? Generate Unstructured Content - OpenAI removed
+    # ? Generate Unstructured Content
     async def _generate_openai(
         self,
         model: str,
@@ -182,11 +185,6 @@ class LLMClient:
         extra_body: Optional[dict] = None,
         depth: int = 0,
     ) -> str | None:
-        # OpenAI support removed - use Google Gemini instead
-        raise HTTPException(
-            status_code=400,
-            detail="OpenAI support has been removed. Please use Google Gemini instead.",
-        )
         client: AsyncOpenAI = self._client
         response = await client.chat.completions.create(
             model=model,

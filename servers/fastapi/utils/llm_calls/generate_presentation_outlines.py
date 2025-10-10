@@ -6,9 +6,11 @@ from typing import Optional
 # Add the app directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../..'))
 
-from app.core.llm_client import stream_structured
+from services.llm_client import LLMClient
 from utils.get_dynamic_models import get_presentation_outline_model_with_n_slides
 from utils.llm_client_error_handler import handle_llm_client_exceptions
+from utils.llm_provider import get_model
+from models.llm_message import LLMSystemMessage, LLMUserMessage
 
 
 def get_system_prompt(
@@ -101,23 +103,21 @@ async def generate_ppt_outline(
 ):
     response_model = get_presentation_outline_model_with_n_slides(n_slides)
     
-    # Create the prompt for outline generation
-    system_prompt = get_system_prompt(
-        tone, verbosity, instructions, include_title_slide
+    # Create messages for outline generation
+    messages = get_messages(
+        content, n_slides, language, additional_context, tone, verbosity, instructions, include_title_slide
     )
-    user_prompt = get_user_prompt(content, n_slides, language, additional_context)
-    
-    # Combine system and user prompts
-    full_prompt = f"{system_prompt}\n\n{user_prompt}"
     
     # Add web search instruction if needed
     if web_search:
-        full_prompt += "\n\n**Search web to get latest information about the topic**"
+        messages.append(LLMUserMessage(content="**Search web to get latest information about the topic**"))
 
     try:
-        async for chunk in stream_structured(
-            full_prompt,
-            response_model.model_json_schema(),
+        llm_client = LLMClient()
+        async for chunk in llm_client.stream_structured(
+            model=get_model(),
+            messages=messages,
+            response_format=response_model.model_json_schema(),
         ):
             yield chunk
     except Exception as e:

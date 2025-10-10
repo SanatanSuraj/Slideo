@@ -257,13 +257,13 @@ async def generate_slide_content_with_schema(
     # Image and Icon Output Format
     For image fields, use:
     {{
-        "__image_url__": "https://example.com/image.jpg",
+        "__image_url__": "/static/images/placeholder.jpg",
         "__image_prompt__": "description of the image"
     }}
     
     For icon fields, use:
     {{
-        "__icon_url__": "https://example.com/icon.svg", 
+        "__icon_url__": "/static/icons/placeholder.svg", 
         "__icon_query__": "description of the icon"
     }}
 
@@ -287,54 +287,86 @@ async def generate_slide_content_with_schema(
     The output must match the schema structure provided in the system prompt.
     """
     
-    # Use the improved LLM client with correct parameters
+    # Use the original LLM client with schema-based generation
     try:
-        if improved_llm_client.provider == "google":
-            response = await improved_llm_client._generate_with_google(
-                outline=outline,
-                language=language,
-                tone=tone,
-                verbosity=verbosity,
-                instructions=instructions
-            )
-            try:
-                parsed_response = json.loads(response)
-                print(f"🔍 Google response parsed successfully: {parsed_response}")
-                return parsed_response
-            except json.JSONDecodeError:
-                # If JSON parsing fails, try to extract JSON from the response
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    parsed_json = json.loads(json_match.group())
-                    print(f"🔍 Extracted JSON from Google response: {parsed_json}")
-                    return parsed_json
-                else:
-                    raise ValueError(f"Failed to parse JSON response: {response}")
-        elif improved_llm_client.provider == "openai":
-            response = await improved_llm_client._generate_with_openai(
-                outline=outline,
-                language=language,
-                tone=tone,
-                verbosity=verbosity,
-                instructions=instructions
-            )
-            try:
-                parsed_response = json.loads(response)
-                print(f"🔍 OpenAI response parsed successfully: {parsed_response}")
-                return parsed_response
-            except json.JSONDecodeError:
-                # If JSON parsing fails, try to extract JSON from the response
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    parsed_json = json.loads(json_match.group())
-                    print(f"🔍 Extracted JSON from OpenAI response: {parsed_json}")
-                    return parsed_json
-                else:
-                    raise ValueError(f"Failed to parse JSON response: {response}")
-        else:
-            raise ValueError(f"Unsupported provider: {improved_llm_client.provider}")
+        # Get the system and user prompts with schema
+        system_prompt = get_system_prompt(tone, verbosity, instructions)
+        user_prompt = get_user_prompt(outline, language)
+        
+        # Add schema to the system prompt
+        print(f"🔍 SCHEMA DEBUG: {json.dumps(schema, indent=2)}")
+        system_prompt += f"""
+
+# CRITICAL: REQUIRED OUTPUT SCHEMA
+You MUST generate content that matches this EXACT schema structure. DO NOT use the old format with "slides" array.
+
+REQUIRED SCHEMA:
+{json.dumps(schema, indent=2)}
+
+# CRITICAL INSTRUCTIONS:
+1. Generate a SINGLE object (not an array with "slides")
+2. Include ALL required fields: {list(schema.get('required', []))}
+3. For image fields, ALWAYS include:
+   {{
+       "__image_url__": "/static/images/placeholder.jpg",
+       "__image_prompt__": "detailed description of the image"
+   }}
+4. For icon fields, ALWAYS include:
+   {{
+       "__icon_url__": "/static/icons/placeholder.svg", 
+       "__icon_query__": "description of the icon"
+   }}
+
+# EXAMPLE OUTPUT FORMAT:
+{{
+    "title": "Your slide title",
+    "image": {{
+        "__image_url__": "/static/images/placeholder.jpg",
+        "__image_prompt__": "AI technology and human collaboration"
+    }},
+    "bulletPoints": [
+        {{
+            "title": "Point 1",
+            "icon": {{
+                "__icon_url__": "/static/icons/placeholder.svg",
+                "__icon_query__": "technology icon"
+            }}
+        }}
+    ]
+}}
+
+IMPORTANT: Your response must be a valid JSON object that matches the schema above exactly. DO NOT use the old "slides" array format.
+"""
+
+        # Use the original LLM client with schema-aware prompts
+        from services.llm_client import LLMSystemMessage, LLMUserMessage
+        from utils.llm_provider import get_model
+        
+        messages = [
+            LLMSystemMessage(content=system_prompt),
+            LLMUserMessage(content=user_prompt)
+        ]
+        
+        response = await improved_llm_client.llm_client.generate(
+            model=get_model(),
+            messages=messages,
+            max_tokens=4000
+        )
+        
+        try:
+            parsed_response = json.loads(response)
+            print(f"🔍 Schema-based response parsed successfully: {parsed_response}")
+            return parsed_response
+        except json.JSONDecodeError:
+            # If JSON parsing fails, try to extract JSON from the response
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                parsed_json = json.loads(json_match.group())
+                print(f"🔍 Extracted JSON from response: {parsed_json}")
+                return parsed_json
+            else:
+                raise ValueError(f"Failed to parse JSON response: {response}")
             
     except Exception as e:
         print(f"🔍 Error in schema-aware generation: {str(e)}")

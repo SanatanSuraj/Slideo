@@ -42,6 +42,8 @@ async def get_slide_layout_from_prompt(
     slide: SlideInDB,
 ) -> SlideLayoutModel:
 
+    # Initialize LLM client lazily to ensure environment variables are set
+    from services.llm_client import LLMClient
     client = LLMClient()
     model = get_model()
 
