@@ -11,6 +11,8 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useTemplateLayouts } from "@/app/(presentation-generator)/hooks/useTemplateLayouts";
+import UniversalPresentButton from "@/app/(presentation-generator)/components/UniversalPresentButton";
+import { Play } from "lucide-react";
 
 export const PresentationCard = ({
   id,
@@ -74,18 +76,29 @@ export const PresentationCard = ({
 
             </PopoverTrigger>
             <PopoverContent align="end" className="bg-white w-[200px]">
-              <button
-                className="flex items-center justify-between w-full px-2 py-1 hover:bg-gray-100"
-                onClick={handleDelete}
-              >
-                <p>Delete</p>
-                <TrashIcon className="w-4 h-4 text-red-500" />
-              </button>
+              <div className="p-2">
+                <UniversalPresentButton
+                  presentationId={id}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start mb-2"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Present
+                </UniversalPresentButton>
+                <button
+                  className="flex items-center justify-between w-full px-2 py-1 hover:bg-gray-100 rounded"
+                  onClick={handleDelete}
+                >
+                  <p>Delete</p>
+                  <TrashIcon className="w-4 h-4 text-red-500" />
+                </button>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
 
-        <div className=" slide-box relative overflow-hidden border aspect-video"
+        <div className=" slide-box relative overflow-hidden border aspect-video group"
           style={{
 
           }}
@@ -93,6 +106,19 @@ export const PresentationCard = ({
           <div className="absolute bg-transparent z-40 top-0 left-0 w-full h-full" />
           <div className="transform scale-[0.2] flex justify-center items-center origin-top-left  w-[500%] h-[500%]">
             {renderSlideContent(slide, false)}
+          </div>
+          
+          {/* Present Button Overlay */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100 z-50">
+            <UniversalPresentButton
+              presentationId={id}
+              variant="default"
+              size="sm"
+              className="bg-white text-black hover:bg-gray-100"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              Present
+            </UniversalPresentButton>
           </div>
         </div>
 

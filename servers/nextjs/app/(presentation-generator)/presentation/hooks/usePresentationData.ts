@@ -83,19 +83,33 @@ export const usePresentationData = (
         console.log('🔍 Presentation data from API:', data);
         
         // Check if presentation is properly prepared
-        if (!data.structure || !data.outlines) {
+        // If we have slides, the presentation is ready regardless of structure/outlines
+        const hasSlides = data.slides && data.slides.length > 0;
+        const hasStructure = data.structure;
+        const hasOutlines = data.outlines;
+        
+        if (!hasSlides && (!hasStructure || !hasOutlines)) {
           console.log('🔍 Presentation not prepared, setting error state');
           console.log('🔍 Structure:', data.structure);
           console.log('🔍 Outlines:', data.outlines);
+          console.log('🔍 Slides:', data.slides);
           setError(true);
           setLoading(false);
-          toast.error("Presentation not ready", {
-            description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
-            action: {
-              label: "Go to Outline",
-              onClick: () => window.location.href = '/outline'
-            }
-          });
+          
+          // Only show error toast if not in streaming mode
+          // Note: We don't have access to stream parameter here, so we'll check URL params
+          const urlParams = new URLSearchParams(window.location.search);
+          const isStreaming = urlParams.get('stream') === 'true';
+          
+          if (!isStreaming) {
+            toast.error("Presentation not ready", {
+              description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
+              action: {
+                label: "Go to Outline",
+                onClick: () => window.location.href = '/outline'
+              }
+            });
+          }
           return;
         }
         

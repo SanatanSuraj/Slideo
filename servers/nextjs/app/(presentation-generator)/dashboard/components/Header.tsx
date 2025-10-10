@@ -8,8 +8,13 @@ import { usePathname } from "next/navigation";
 import HeaderNav from "@/app/(presentation-generator)/components/HeaderNab";
 import { Layout, FilePlus2 } from "lucide-react";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store/store";
+import UniversalPresentButton from "@/app/(presentation-generator)/components/UniversalPresentButton";
 const Header = () => {
   const pathname = usePathname();
+  const { presentation_id } = useSelector((state: RootState) => state.presentationGeneration);
+  
   return (
     <div className="bg-[#5146E5] w-full shadow-lg sticky top-0 z-50">
       <Wrapper>
@@ -25,6 +30,14 @@ const Header = () => {
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            {/* Present Button - only show when presentation_id is available */}
+            {presentation_id && (
+              <UniversalPresentButton
+                presentationId={presentation_id}
+                variant="ghost"
+                className="border border-white text-white hover:bg-white hover:text-black"
+              />
+            )}
             <Link
               href="/custom-template"
               prefetch={false}

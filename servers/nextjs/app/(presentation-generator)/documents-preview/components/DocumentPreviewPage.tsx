@@ -29,6 +29,7 @@ import { ChevronRight, PanelRightOpen, X } from "lucide-react";
 import ToolTip from "@/components/ToolTip";
 import Header from "@/app/(presentation-generator)/dashboard/components/Header";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
+import UniversalPresentButton from "@/app/(presentation-generator)/components/UniversalPresentButton";
 
 // Types
 interface LoadingState {
@@ -290,7 +291,15 @@ const DocumentsPreviewPage: React.FC = () => {
           {renderDocumentContent()}
         </div>
 
-        <div className="fixed bottom-5 right-5">
+        <div className="fixed bottom-5 right-5 flex flex-col gap-3">
+          {/* Present Button - only show when presentation_id is available */}
+          {presentation_id && (
+            <UniversalPresentButton
+              presentationId={presentation_id}
+              variant="default"
+              className="px-8 py-6 rounded-sm text-md bg-white text-[#5146E5] hover:bg-gray-100 border border-[#5146E5]"
+            />
+          )}
           <Button
             onClick={handleCreatePresentation}
             className="flex items-center gap-2 px-8 py-6 rounded-sm text-md bg-[#5146E5] hover:bg-[#5146E5]/90"

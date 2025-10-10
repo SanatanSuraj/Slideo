@@ -27,16 +27,13 @@ import { toast } from "sonner";
 
 
 import Announcement from "@/components/Announcement";
-import { PptxPresentationModel } from "@/types/pptx_models";
 import HeaderNav from "../../components/HeaderNab";
-import PDFIMAGE from "@/public/pdf.svg";
-import PPTXIMAGE from "@/public/pptx.svg";
-import Image from "next/image";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { usePresentationUndoRedo } from "../hooks/PresentationUndoRedo";
 import ToolTip from "@/components/ToolTip";
 import { clearPresentationData } from "@/store/slices/presentationGeneration";
 import { clearHistory } from "@/store/slices/undoRedoSlice";
+import DualExport from "./DualExport";
 
 const Header = ({
   presentation_id,
@@ -58,137 +55,20 @@ const Header = ({
 
   const { onUndo, onRedo, canUndo, canRedo } = usePresentationUndoRedo();
 
-  const get_presentation_pptx_model = async (id: string): Promise<PptxPresentationModel> => {
-    const response = await fetch(`/api/presentation_to_pptx_model?id=${id}`);
-    const pptx_model = await response.json();
-    return pptx_model;
-  };
-
-  const handleExportPptx = async () => {
-    if (isStreaming) return;
-
-    try {
-      setOpen(false);
-      setShowLoader(true);
-      // Save the presentation data before exporting
-      trackEvent(MixpanelEvent.Header_UpdatePresentationContent_API_Call);
-      await PresentationGenerationApi.updatePresentationContent(presentationData);
-
-
-      trackEvent(MixpanelEvent.Header_GetPptxModel_API_Call);
-      const pptx_model = await get_presentation_pptx_model(presentation_id);
-      if (!pptx_model) {
-        throw new Error("Failed to get presentation PPTX model");
-      }
-      trackEvent(MixpanelEvent.Header_ExportAsPPTX_API_Call);
-      const pptx_path = await PresentationGenerationApi.exportAsPPTX(pptx_model);
-      if (pptx_path) {
-        // window.open(pptx_path, '_self');
-        downloadLink(pptx_path);
-      } else {
-        throw new Error("No path returned from export");
-      }
-    } catch (error) {
-      console.error("Export failed:", error);
-      setShowLoader(false);
-      toast.error("Having trouble exporting!", {
-        description:
-          "We are having trouble exporting your presentation. Please try again.",
-      });
-    } finally {
-      setShowLoader(false);
-    }
-  };
-
-  const handleExportPdf = async () => {
-    if (isStreaming) return;
-
-    try {
-      setOpen(false);
-      setShowLoader(true);
-      // Save the presentation data before exporting
-      trackEvent(MixpanelEvent.Header_UpdatePresentationContent_API_Call);
-      await PresentationGenerationApi.updatePresentationContent(presentationData);
-
-      trackEvent(MixpanelEvent.Header_ExportAsPDF_API_Call);
-      
-      // Get authentication token from localStorage
-      const authToken = localStorage.getItem('authToken');
-      
-      const response = await fetch('/api/export-as-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: presentation_id,
-          title: presentationData?.title,
-          token: authToken,
-        })
-      });
-
-      if (response.ok) {
-        const { path: pdfPath } = await response.json();
-        // window.open(pdfPath, '_blank');
-        downloadLink(pdfPath);
-      } else {
-        throw new Error("Failed to export PDF");
-      }
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Having trouble exporting!", {
-        description:
-          "We are having trouble exporting your presentation. Please try again.",
-      });
-    } finally {
-      setShowLoader(false);
-    }
-  };
   const handleReGenerate = () => {
     dispatch(clearPresentationData());
     dispatch(clearHistory())
     trackEvent(MixpanelEvent.Header_ReGenerate_Button_Clicked, { pathname });
     router.push(`/presentation?id=${presentation_id}&stream=true`);
   };
-  const downloadLink = (path: string) => {
-    // if we have popup access give direct download if not redirect to the path
-    if (window.opener) {
-      window.open(path, '_blank');
-    } else {
-      const link = document.createElement('a');
-      link.href = path;
-      link.download = path.split('/').pop() || 'download';
-      document.body.appendChild(link);
-      link.click();
-    }
-  };
 
   const ExportOptions = ({ mobile }: { mobile: boolean }) => (
     <div className={`space-y-2 max-md:mt-4 ${mobile ? "" : "bg-white"} rounded-lg`}>
-      <Button
-        onClick={() => {
-          trackEvent(MixpanelEvent.Header_Export_PDF_Button_Clicked, { pathname });
-          handleExportPdf();
-        }}
-        variant="ghost"
-        className={`pb-4 border-b rounded-none border-gray-300 w-full flex justify-start text-[#5146E5] ${mobile ? "bg-white py-6 border-none rounded-lg" : ""}`} >
-        <Image src={PDFIMAGE} alt="pdf export" width={30} height={30} />
-        Export as PDF
-      </Button>
-      <Button
-        onClick={() => {
-          trackEvent(MixpanelEvent.Header_Export_PPTX_Button_Clicked, { pathname });
-          handleExportPptx();
-        }}
-        variant="ghost"
-        className={`w-full flex justify-start text-[#5146E5] ${mobile ? "bg-white py-6" : ""}`}
-      >
-        <Image src={PPTXIMAGE} alt="pptx export" width={30} height={30} />
-        Export as PPTX
-      </Button>
-
-
+      <DualExport 
+        presentation_id={presentation_id}
+        onExportStart={() => setShowLoader(true)}
+        onExportEnd={() => setShowLoader(false)}
+      />
     </div>
   );
 

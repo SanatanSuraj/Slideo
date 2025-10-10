@@ -259,20 +259,67 @@ export const usePresentationStreaming = (
         console.log('🔍 Presentation data:', presentation);
 
         // Check if presentation has required fields
-        if (!presentation.structure || !presentation.outlines) {
+        // If we have slides, the presentation is ready regardless of structure/outlines
+        const hasSlides = presentation.slides && presentation.slides.length > 0;
+        const hasStructure = presentation.structure;
+        const hasOutlines = presentation.outlines;
+        
+        if (!hasSlides && (!hasStructure || !hasOutlines)) {
           console.log('❌ Presentation not prepared, showing error state');
           console.log('🔍 Structure:', presentation.structure);
           console.log('🔍 Outlines:', presentation.outlines);
+          console.log('🔍 Slides:', presentation.slides);
           setLoading(false);
           dispatch(setStreaming(false));
           setError(true);
-          toast.error("Presentation not ready", {
-            description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
-            action: {
-              label: "Go to Outline",
-              onClick: () => window.location.href = '/outline'
-            }
-          });
+          
+          // Only show error toast if not in streaming mode
+          if (!stream) {
+            toast.error("Presentation not ready", {
+              description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
+              action: {
+                label: "Go to Outline",
+                onClick: () => window.location.href = '/outline'
+              }
+            });
+          }
+          return;
+        }
+        
+        // If we have slides, the presentation is ready - no need to stream
+        if (hasSlides) {
+          console.log('✅ Presentation has slides, loading existing slides');
+          setLoading(false);
+          dispatch(setStreaming(false));
+          setError(false);
+          
+          // Parse slide content from JSON string to object
+          const processedData = {
+            ...presentation,
+            slides: presentation.slides?.map((slide: any) => {
+              if (slide.content && typeof slide.content === 'string') {
+                try {
+                  const parsedContent = JSON.parse(slide.content);
+                  return {
+                    ...slide,
+                    content: parsedContent
+                  };
+                } catch (error) {
+                  console.warn('Failed to parse slide content:', error);
+                  return slide;
+                }
+              }
+              return slide;
+            }) || []
+          };
+          
+          dispatch(setPresentationData(processedData));
+          
+          // Dispatch outlines if they exist
+          if (presentation.outlines && presentation.outlines.slides && Array.isArray(presentation.outlines.slides)) {
+            dispatch(setOutlines(presentation.outlines.slides));
+          }
+          
           return;
         }
 

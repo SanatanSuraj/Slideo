@@ -113,12 +113,14 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     
     // Check if presentation is not prepared (missing layout/outlines)
     // Only run this check after we've had a chance to load data
-    if (!loading && !isStreaming && presentationData !== null) {
+    // Don't run readiness check if we're in streaming mode
+    if (!loading && !isStreaming && !stream && presentationData !== null) {
       // Add a small delay to ensure all data is loaded
       readinessCheckTimeout = setTimeout(() => {
       console.log('🔍 Presentation readiness check:', {
         loading,
         isStreaming,
+        stream,
         hasLayout: !!presentationData?.layout,
         hasOutlines: !!outlines && outlines.length > 0,
         hasSlides: !!presentationData?.slides && presentationData?.slides.length > 0,
@@ -129,14 +131,14 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
         slides: presentationData?.slides
       });
       
-      // If no layout or outlines, presentation is not prepared
-      // But if we have slides, the presentation is ready regardless of outlines
+      // If we have slides, the presentation is ready regardless of layout/outlines
       const hasSlides = presentationData?.slides && presentationData?.slides.length > 0;
       const hasLayout = !!presentationData?.layout;
       const hasOutlines = !!outlines && outlines.length > 0;
       
-      if (!hasLayout || (!hasOutlines && !hasSlides)) {
-        console.log('🔍 Presentation not prepared (missing layout/outlines), showing error state');
+      // Only show error if we don't have slides AND we're missing required preparation data
+      if (!hasSlides && (!hasLayout || !hasOutlines)) {
+        console.log('🔍 Presentation not prepared (missing layout/outlines and no slides), showing error state');
         console.log('🔍 Detailed check:', {
           hasPresentationData: !!presentationData,
           hasLayout,
@@ -150,6 +152,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
         timeoutId = setTimeout(() => {
           setError(true);
         }, 1000);
+      } else if (hasSlides) {
+        console.log('✅ Presentation has slides, clearing any error state');
+        setError(false);
       }
       
       // If layout and outlines exist but no slides, and we're not streaming, try to trigger streaming
@@ -158,6 +163,12 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
         // Don't set error here, let streaming handle it
       }
       }, 500); // 500ms delay to ensure data is loaded
+    }
+    
+    // If we're in streaming mode, clear any error state and show loading
+    if (stream) {
+      console.log('🔄 Streaming mode detected, clearing error state and showing loading');
+      setError(false);
     }
     
     return () => {
@@ -175,7 +186,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   
     useFontLoader(fonts || []);
   }
-  }, [presentationData, loading, isStreaming, outlines]);
+  }, [presentationData, loading, isStreaming, outlines, stream]);
   // Presentation Mode View
   if (isPresentMode) {
     return (
@@ -272,6 +283,8 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
               </div>
             ) : !presentationData ||
             loading ||
+            isStreaming ||
+            stream ||
             !presentationData?.slides ||
             presentationData?.slides.length === 0 ? (
               <div className="relative w-full h-[calc(100vh-120px)] mx-auto">
@@ -283,13 +296,13 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                     />
                   ))}
                 </div>
-                {(stream || loading) && (
+                {(stream || loading || isStreaming) && (
                   <LoadingState 
                     message={
-                      loading && !stream 
-                        ? "Loading your presentation..." 
-                        : stream 
+                      stream || isStreaming
                         ? "Generating slides with AI..." 
+                        : loading 
+                        ? "Loading your presentation..." 
                         : undefined
                     } 
                   />

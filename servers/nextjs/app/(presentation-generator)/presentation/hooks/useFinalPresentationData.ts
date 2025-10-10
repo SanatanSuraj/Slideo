@@ -178,13 +178,20 @@ export const useFinalPresentationData = (
       console.log('❌ No final presentation data found, showing error state');
       setError(true);
       setLoading(false);
-      toast.error("Presentation not ready", {
-        description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
-        action: {
-          label: "Go to Outline",
-          onClick: () => window.location.href = '/outline'
-        }
-      });
+      
+      // Only show error toast if not in streaming mode
+      const urlParams = new URLSearchParams(window.location.search);
+      const isStreaming = urlParams.get('stream') === 'true';
+      
+      if (!isStreaming) {
+        toast.error("Presentation not ready", {
+          description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
+          action: {
+            label: "Go to Outline",
+            onClick: () => window.location.href = '/outline'
+          }
+        });
+      }
       
     } catch (error) {
       console.error("Error fetching final presentation data:", error);
