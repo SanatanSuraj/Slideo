@@ -1,7 +1,6 @@
 import path from "path";
 import fs from "fs";
 import puppeteer from "puppeteer";
-import html2canvas from "html2canvas";
 
 import { sanitizeFilename } from "@/app/(presentation-generator)/utils/others";
 import { NextResponse, NextRequest } from "next/server";
@@ -38,8 +37,8 @@ export async function POST(req: NextRequest) {
     
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
-    page.setDefaultNavigationTimeout(300000);
-    page.setDefaultTimeout(300000);
+    page.setDefaultNavigationTimeout(120000); // Reduced to 2 minutes
+    page.setDefaultTimeout(120000); // Reduced to 2 minutes
 
     // If token is provided, set it in localStorage before navigating
     if (token) {
@@ -137,7 +136,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use html2canvas to capture each slide individually
+    // Inject html2canvas into the page
+    console.log(`🔧 PDF Canvas Export: Injecting html2canvas into page...`);
+    await page.addScriptTag({
+      url: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+    });
+
+    // Wait for html2canvas to load
+    await page.waitForFunction(() => typeof window.html2canvas !== 'undefined', { timeout: 10000 });
+
+    // Use html2canvas to capture each slide individually with progress tracking
     console.log(`🔧 PDF Canvas Export: Capturing slides with html2canvas...`);
     
     const slideImages = await page.evaluate(async () => {
@@ -146,25 +154,34 @@ export async function POST(req: NextRequest) {
       
       for (let i = 0; i < slides.length; i++) {
         const slide = slides[i];
+        console.log(`🔧 PDF Canvas Export: Capturing slide ${i + 1}/${slides.length}`);
         
         // Scroll the slide into view
         slide.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300)); // Reduced wait time
         
-        // Capture the slide using html2canvas
-        const canvas = await html2canvas(slide as HTMLElement, {
-          backgroundColor: '#ffffff',
-          scale: 2, // Higher resolution
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          width: 1280,
-          height: 720,
-          scrollX: 0,
-          scrollY: 0,
-        });
-        
-        slideImages.push(canvas.toDataURL('image/png'));
+        try {
+          // Capture the slide using html2canvas with optimized settings
+          const canvas = await window.html2canvas(slide as HTMLElement, {
+            backgroundColor: '#ffffff',
+            scale: 1, // Reduced scale for better performance
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            width: 1280,
+            height: 720,
+            scrollX: 0,
+            scrollY: 0,
+            removeContainer: true, // Clean up after capture
+            timeout: 10000, // 10 second timeout per slide
+          });
+          
+          slideImages.push(canvas.toDataURL('image/png', 0.8)); // Reduced quality for smaller size
+          console.log(`🔧 PDF Canvas Export: Slide ${i + 1} captured successfully`);
+        } catch (error) {
+          console.error(`🔧 PDF Canvas Export: Failed to capture slide ${i + 1}:`, error);
+          // Continue with other slides even if one fails
+        }
       }
       
       return slideImages;
@@ -172,28 +189,55 @@ export async function POST(req: NextRequest) {
 
     console.log(`🔧 PDF Canvas Export: Captured ${slideImages.length} slides`);
 
-    // Create a PDF from the captured images
-    const pdfBuffer = await page.evaluate(async (images) => {
-      // Import jsPDF dynamically
-      const { jsPDF } = await import('jspdf');
-      
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [1280, 720]
-      });
-      
-      images.forEach((imageData, index) => {
-        if (index > 0) {
-          pdf.addPage();
+    // Inject jsPDF into the page
+    console.log(`🔧 PDF Canvas Export: Injecting jsPDF into page...`);
+    await page.addScriptTag({
+      url: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+    });
+
+    // Wait for jsPDF to load
+    await page.waitForFunction(() => typeof window.jspdf !== 'undefined', { timeout: 10000 });
+
+    // Create a PDF from the captured images with timeout
+    console.log(`🔧 PDF Canvas Export: Starting PDF generation...`);
+    const pdfArrayBuffer = await Promise.race([
+      page.evaluate(async (images) => {
+        console.log(`🔧 PDF Canvas Export: Creating PDF with ${images.length} images`);
+        const { jsPDF } = window.jspdf;
+        
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'in',
+          format: 'a4'
+        });
+        
+        for (let i = 0; i < images.length; i++) {
+          console.log(`🔧 PDF Canvas Export: Adding slide ${i + 1}/${images.length}`);
+          if (i > 0) {
+            pdf.addPage();
+          }
+          // A4 landscape dimensions: 11.69 x 8.27 inches
+          pdf.addImage(images[i], 'PNG', 0, 0, 11.69, 8.27);
         }
-        pdf.addImage(imageData, 'PNG', 0, 0, 1280, 720);
-      });
-      
-      return pdf.output('arraybuffer');
-    }, slideImages);
+        
+        console.log(`🔧 PDF Canvas Export: Converting PDF to arraybuffer...`);
+        // Get arraybuffer and convert to regular array for serialization
+        const arrayBuffer = pdf.output('arraybuffer');
+        console.log(`🔧 PDF Canvas Export: PDF conversion complete, size: ${arrayBuffer.byteLength} bytes`);
+        return Array.from(new Uint8Array(arrayBuffer));
+      }, slideImages),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('PDF generation timeout after 60 seconds')), 60000)
+      )
+    ]);
 
     browser.close();
+
+    // Convert array back to buffer
+    const pdfBufferData = Buffer.from(pdfArrayBuffer);
+    
+    console.log(`🔧 PDF Canvas Export: PDF buffer size: ${pdfBufferData.length} bytes`);
+    console.log(`🔧 PDF Canvas Export: PDF buffer starts with: ${pdfBufferData.slice(0, 10).toString('hex')}`);
 
     const sanitizedTitle = sanitizeFilename(title ?? "presentation");
     const projectRoot = path.resolve(process.cwd(), "../../");
@@ -204,7 +248,9 @@ export async function POST(req: NextRequest) {
       `${sanitizedTitle}-canvas.pdf`
     );
     await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
-    await fs.promises.writeFile(destinationPath, Buffer.from(pdfBuffer));
+    await fs.promises.writeFile(destinationPath, pdfBufferData);
+    
+    console.log(`🔧 PDF Canvas Export: PDF written to: ${destinationPath}`);
 
     const relativePath = path.relative(path.resolve(appDataDir), destinationPath);
     const downloadUrl = `/app_data/${relativePath.replace(/\\/g, '/')}`;
