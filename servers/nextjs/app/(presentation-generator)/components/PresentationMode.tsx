@@ -34,6 +34,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
 
 }) => {
   const { renderSlideContent } = useTemplateLayouts();
+
   // Modify the handleKeyPress to prevent default behavior
   const handleKeyPress = useCallback(
     (event: KeyboardEvent) => {
@@ -43,7 +44,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
         case "ArrowRight":
         case "ArrowDown":
         case " ": // Space key
-          if (currentSlide < slides.length - 1) {
+          if (slides && currentSlide < slides.length - 1) {
             onSlideChange(currentSlide + 1);
           }
           break;
@@ -62,7 +63,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
           break;
       }
     },
-    [currentSlide, slides.length, onSlideChange, onExit, onFullscreenToggle]
+    [currentSlide, slides?.length, onSlideChange, onExit, onFullscreenToggle]
   );
 
   // Add both keydown and keyup listeners
@@ -98,7 +99,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
         onSlideChange(currentSlide - 1);
       }
     } else if (clickX > (windowWidth * 2) / 3) {
-      if (currentSlide < slides.length - 1) {
+      if (slides && currentSlide < slides.length - 1) {
         onSlideChange(currentSlide + 1);
       }
     }
@@ -115,6 +116,21 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
     document.addEventListener("keydown", handleEscKey);
     return () => document.removeEventListener("keydown", handleEscKey);
   }, [isFullscreen, onFullscreenToggle]);
+
+  // Safety check for slides - moved after all hooks
+  if (!slides || !Array.isArray(slides) || slides.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="text-white text-center">
+          <h2 className="text-2xl font-bold mb-4">No Slides Available</h2>
+          <p className="text-gray-300 mb-6">The presentation doesn't have any slides to display.</p>
+          <Button onClick={onExit} variant="outline" className="text-white border-white hover:bg-white hover:text-black">
+            Exit Presentation
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -168,7 +184,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <span className="text-white">
-              {currentSlide + 1} / {slides.length}
+              {currentSlide + 1} / {slides?.length || 0}
             </span>
             <Button
               variant="ghost"
@@ -177,7 +193,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
                 e.stopPropagation();
                 onSlideChange(currentSlide + 1);
               }}
-              disabled={currentSlide === slides.length - 1}
+              disabled={!slides || currentSlide === slides.length - 1}
               className="text-white hover:bg-white/20"
             >
               <ChevronRight className="h-5 w-5" />

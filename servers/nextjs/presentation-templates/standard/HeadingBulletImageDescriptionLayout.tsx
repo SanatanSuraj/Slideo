@@ -1,5 +1,4 @@
 import React from 'react'
-// charts removed
 import * as z from "zod";
 
 const ImageSchema = z.object({
@@ -72,64 +71,54 @@ const ImageSchema = z.object({
     const cards = slideData?.cards || []
   
     return (
-      <>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      <div className=" w-full rounded-sm max-w-[1280px] shadow-lg max-h-[720px] aspect-video relative z-20 mx-auto overflow-hidden" style={{ fontFamily:"var(--heading-font-family,Playfair Display)", backgroundColor: 'var(--card-background-color, #FFFFFF)' }}>
-        {/* page number removed */}
-  
+      <div className="w-full rounded-sm max-w-[1280px] shadow-lg max-h-[720px] aspect-video relative z-20 mx-auto overflow-hidden" style={{ fontFamily:"var(--heading-font-family,Playfair Display)", backgroundColor: 'var(--card-background-color, #FFFFFF)' }}>
         <div className="grid grid-cols-2 h-full">
           <div className="relative bg-[#efefef]">
-            {slideData?.smallImage?.__image_url__ ? (
-              <>
-                <img
-                  src={slideData.smallImage.__image_url__}
-                  alt={slideData.smallImage.__image_prompt__ || "image"}
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-                {/* overlay removed */}
-              </>
-            ) : null}
+            {slideData?.smallImage?.__image_url__ && (
+              <img
+                src={slideData.smallImage.__image_url__}
+                alt={slideData.smallImage.__image_prompt__ || "image"}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
             <div className="pt-6 pl-10 pr-6 relative z-[1]">
               <div className="flex items-center gap-6">
-                { (slideData as any)?.__companyName__ && <span className="text-[18px]  font-semibold" style={{ color: 'var(--text-heading-color, #111827)' }}>
-                  {(slideData as any)?.__companyName__ || "Pitchdeck"}
-                </span>}
+                {(slideData as any)?.__companyName__ && (
+                  <span className="text-[18px] font-semibold" style={{ color: 'var(--text-heading-color, #111827)' }}>
+                    {(slideData as any)?.__companyName__ || "Pitchdeck"}
+                  </span>
+                )}
                 <div className="h-[2px] w-[220px] rounded-full" style={{ backgroundColor: 'var(--text-heading-color, #111827)' }}></div>
               </div>
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[88px] bg-gradient-to-t from-black/20 to-transparent z-[1]"></div>
           </div>
-  
+    
           <div className="relative px-12 pt-16">
-            <h1 className=" leading-[72px] text-[64px] tracking-tight whitespace-pre-line font-semibold" style={{ color: 'var(--text-heading-color, #111827)' }}>
+            <h1 className="leading-[72px] text-[64px] tracking-tight whitespace-pre-line font-semibold" style={{ color: 'var(--text-heading-color, #111827)' }}>
               {slideData?.heading || "A Blueprint for\nSuccess"}
             </h1>
-
           </div>
         </div>
         <div className="absolute left-10 right-10 top-[320px] z-10">
           <div className="w-fit max-w-full rounded-md shadow-[0_20px_60px_rgba(0,0,0,0.12)] ml-auto" style={{ backgroundColor: 'var(--secondary-accent-color, #F3F4F6)' }}>
             <div className="px-8 py-10">
               <div className="grid grid-flow-col auto-cols-max gap-6">
-              {cards.map((card, idx) => (
+                {cards.map((card, idx) => (
                   <div key={idx} className="flex flex-col items-center">
-                    <div className="w-[240px] h-[64px] rounded-sm text-white flex items-center justify-center  text-[22px]" style={{ backgroundColor: 'var(--primary-accent-color, #1B8C2D)', color: 'var(--text-heading-color, #FFFFFF)' }}>
-                    {card.title}
+                    <div className="w-[240px] h-[64px] rounded-sm text-white flex items-center justify-center text-[22px]" style={{ backgroundColor: 'var(--primary-accent-color, #1B8C2D)', color: 'var(--text-heading-color, #FFFFFF)' }}>
+                      {card.title}
+                    </div>
+                    <p className="mt-6 text-center text-[16px] leading-[28px] max-w-[240px]" style={{ color: 'var(--text-body-color, #6B7280)' }}>
+                      {card.body}
+                    </p>
                   </div>
-                    <p className="mt-6 text-center text-[16px] leading-[28px]  max-w-[240px]" style={{ color: 'var(--text-body-color, #6B7280)' }}>
-                    {card.body}
-                  </p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
-      </div>
-      </>
     )
   }
 

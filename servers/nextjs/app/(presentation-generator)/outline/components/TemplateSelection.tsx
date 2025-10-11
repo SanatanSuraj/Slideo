@@ -9,11 +9,13 @@ import { fetchWithAuthWait } from "@/utils/api";
 interface TemplateSelectionProps {
   selectedTemplate: Template | null;
   onSelectTemplate: (template: Template) => void;
+  onApplyTemplate?: (template: Template) => void;
 }
 
 const TemplateSelection: React.FC<TemplateSelectionProps> = ({
   selectedTemplate,
-  onSelectTemplate
+  onSelectTemplate,
+  onApplyTemplate
 }) => {
   const {
     getLayoutsByTemplateID,
@@ -306,6 +308,28 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = ({
           </div>
         )}
       </div>
+      
+      {/* Apply Template Button */}
+      {selectedTemplate && onApplyTemplate && (
+        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-blue-900">
+                Template Selected: {selectedTemplate.name}
+              </h4>
+              <p className="text-sm text-blue-700">
+                Click "Apply Template" to update your presentation with this template.
+              </p>
+            </div>
+            <button
+              onClick={() => onApplyTemplate(selectedTemplate)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+            >
+              Apply Template
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

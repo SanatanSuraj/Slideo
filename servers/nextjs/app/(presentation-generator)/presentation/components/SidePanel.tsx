@@ -80,18 +80,23 @@ const SidePanel = ({
 
     if (!active || !over || !presentationData?.slides) return;
 
+    // Filter out null/undefined slides before processing
+    const validSlides = presentationData.slides.filter((slide: any) => slide && slide.id);
+    
     if (active.id !== over.id) {
       // Find the indices of the dragged and target items
-      const oldIndex = presentationData?.slides.findIndex(
+      const oldIndex = validSlides.findIndex(
         (item: any) => item.id === active.id
       );
-      const newIndex = presentationData?.slides.findIndex(
+      const newIndex = validSlides.findIndex(
         (item: any) => item.id === over.id
       );
 
+      if (oldIndex === -1 || newIndex === -1) return;
+
       // Reorder the array
       const reorderedArray = arrayMove(
-        presentationData?.slides,
+        validSlides,
         oldIndex,
         newIndex
       );
@@ -118,6 +123,16 @@ const SidePanel = ({
   ) {
     return null;
   }
+
+  // Debug: Log slide data to identify null/undefined slides
+  console.log('🔍 SidePanel - Presentation data:', presentationData);
+  console.log('🔍 SidePanel - Slides:', presentationData?.slides);
+  console.log('🔍 SidePanel - Slide IDs:', presentationData?.slides?.map((slide: any, index: number) => ({
+    index,
+    id: slide?.id,
+    hasId: !!slide?.id,
+    slide: slide
+  })));
 
   return (
     <>
@@ -160,60 +175,43 @@ const SidePanel = ({
           }
         `}
       >
-        <div
-
-          className="min-w-[300px] bg-white max-w-[300px] h-[calc(100vh-120px)]  rounded-[20px] hide-scrollbar overflow-hidden slide-theme shadow-xl"
-        >
-          <div
-            className="sticky top-0 z-40  px-6 py-4"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center justify-start gap-4">
-                <ToolTip content="Image Preview">
-                  <Button
-                    className={`${active === "grid"
-                      ? "bg-[#5141e5] hover:bg-[#4638c7]"
-                      : "bg-white hover:bg-white"
-                      }`}
-                    onClick={() => {
-                      if (!isStreaming) {
-                        setActive("grid")
-                      }
-                    }}
-                  >
-                    <LayoutList
-                      className={`${active === "grid" ? "text-white" : "text-black"
-                        }`}
-                      size={20}
-                    />
-                  </Button>
-                </ToolTip>
-                <ToolTip content="List Preview">
-                  <Button
-                    className={`${active === "list"
-                      ? "bg-[#5141e5] hover:bg-[#4638c7]"
-                      : "bg-white hover:bg-white"
-                      }`}
-                    onClick={() => {
-                      if (!isStreaming) {
-                        setActive("list")
-                      }
-                    }}
-                  >
-                    <ListTree
-                      className={`${active === "list" ? "text-white" : "text-black"
-                        }`}
-                      size={20}
-                    />
-                  </Button>
-                </ToolTip>
-              </div>
-              <X
-                onClick={handleClose}
-                className="text-[#6c7081] cursor-pointer hover:text-gray-600"
-                size={20}
-              />
+        <div className="w-[280px] bg-[#2d2d2d] h-[calc(100vh-100px)] flex flex-col border-r border-[#404040]">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-[#404040]">
+            <div className="flex items-center gap-2">
+              <Button
+                className="bg-[#404040] hover:bg-[#505050] text-white border-0"
+                onClick={() => {
+                  if (!isStreaming) {
+                    setActive("grid")
+                  }
+                }}
+              >
+                <LayoutList size={16} />
+              </Button>
+              <Button
+                className="bg-[#404040] hover:bg-[#505050] text-white border-0"
+                onClick={() => {
+                  if (!isStreaming) {
+                    setActive("list")
+                  }
+                }}
+              >
+                <ListTree size={16} />
+              </Button>
             </div>
+            <X
+              onClick={handleClose}
+              className="text-[#a0a0a0] cursor-pointer hover:text-white"
+              size={18}
+            />
+          </div>
+
+          {/* New Slide Button */}
+          <div className="p-4 border-b border-[#404040]">
+            <Button className="w-full bg-[#0078d4] hover:bg-[#106ebe] text-white border-0">
+              + New
+            </Button>
           </div>
 
           <DndContext
@@ -221,91 +219,66 @@ const SidePanel = ({
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            {/* List Preview */}
-            {active === "list" && (
-              <div className="p-4 overflow-y-auto hide-scrollbar h-[calc(100%-100px)]">
-                {isStreaming ? (
-                  presentationData &&
-                  presentationData?.slides.map((slide: any, index: number) => (
+            {/* PowerPoint-style Slide List */}
+            <div className="flex-1 overflow-y-auto">
+              {isStreaming ? (
+                presentationData &&
+                presentationData?.slides
+                  ?.filter((slide: any) => slide && slide.id) // Filter out null/undefined slides
+                  ?.map((slide: any, index: number) => (
                     <div
                       key={`${index}-${slide.type}-${slide.id}`}
-                      className={`p-3 cursor-pointer rounded-lg slide-box`}
-                    >
-                      <span className="font-medium slide-title">
-                        Slide {index + 1}
-                      </span>
-                      <p className="text-sm slide-description">
-                        {slide.content.title}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <SortableContext
-                    items={
-                      presentationData?.slides.map((slide: any) => slide.id!) || []
-                    }
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-2" id={`slide-${selectedSlide}`}>
-                      {presentationData &&
-                        presentationData?.slides.map((slide: any, index: number) => (
-                          <SortableListItem
-                            key={`${slide.id}-${index}`}
-                            slide={slide}
-                            index={index}
-                            selectedSlide={selectedSlide}
-                            onSlideClick={onSlideClick}
-                          />
-
-                        ))}
-                    </div>
-                  </SortableContext>
-                )}
-              </div>
-            )}
-
-            {/* Grid Preview */}
-            {active === "grid" && (
-              <div className="p-4 overflow-y-auto hide-scrollbar h-[calc(100%-100px)] space-y-4">
-                {isStreaming ? (
-                  presentationData &&
-                  presentationData?.slides.map((slide: any, index: number) => (
-                    <div
-                      key={`${slide.id}-${index}`}
+                      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-[#404040] border-l-4 ${
+                        selectedSlide === index ? 'border-[#0078d4] bg-[#404040]' : 'border-transparent'
+                      }`}
                       onClick={() => onSlideClick(index)}
-                      className={` cursor-pointer ring-2 p-1  rounded-md transition-all duration-200 ${selectedSlide === index ? ' ring-[#5141e5]' : 'ring-gray-200'
-                        }`}
                     >
-                      <div className=" bg-white pointer-events-none  relative overflow-hidden aspect-video">
-                        <div className="absolute bg-gray-100/5 z-50  top-0 left-0 w-full h-full" />
-                        <div className="transform scale-[0.2] flex justify-center items-center origin-top-left  w-[500%] h-[500%]">
-                          {renderSlideContent(slide, false)}
+                      <div className="w-8 h-8 bg-[#404040] rounded flex items-center justify-center text-white text-sm font-medium">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-sm font-medium truncate">
+                          {slide.content?.title || `Slide ${index + 1}`}
                         </div>
                       </div>
                     </div>
                   ))
-                ) : (
-                  <SortableContext
-                    items={
-                      presentationData?.slides.map((slide: any) => slide.id || `${slide.index}`) || []
-                    }
-                    strategy={verticalListSortingStrategy}
-                  >
+              ) : (
+                <SortableContext
+                  items={
+                    presentationData?.slides
+                      ?.filter((slide: any) => slide && slide.id) // Filter out null/undefined slides
+                      ?.map((slide: any) => slide.id) || []
+                  }
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div id={`slide-${selectedSlide}`}>
                     {presentationData &&
-                      presentationData?.slides.map((slide: any, index: number) => (
-                        <SortableSlide
-                          key={`${slide.id}-${index}`}
-                          slide={slide}
-                          index={index}
-                          selectedSlide={selectedSlide}
-                          onSlideClick={onSlideClick}
-                          renderSlideContent={(slide) => renderSlideContent(slide, false)}
-                        />
-                      ))}
-                  </SortableContext>
-                )}
-              </div>
-            )}
+                      presentationData?.slides
+                        ?.filter((slide: any) => slide && slide.id) // Filter out null/undefined slides
+                        ?.map((slide: any, index: number) => (
+                          <div
+                            key={`${slide.id}-${index}`}
+                            className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-[#404040] border-l-4 ${
+                              selectedSlide === index ? 'border-[#0078d4] bg-[#404040]' : 'border-transparent'
+                            }`}
+                            onClick={() => onSlideClick(index)}
+                          >
+                            <div className="w-8 h-8 bg-[#404040] rounded flex items-center justify-center text-white text-sm font-medium">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm font-medium truncate">
+                                {slide.content?.title || `Slide ${index + 1}`}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                  </div>
+                </SortableContext>
+              )}
+            </div>
+
           </DndContext>
         </div>
       </div>

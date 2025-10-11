@@ -174,24 +174,10 @@ export const useFinalPresentationData = (
         console.log('⚠️ No final edit found in presentation_final_edits collection');
       }
       
-      // If no final presentation or final edit found, show error
-      console.log('❌ No final presentation data found, showing error state');
-      setError(true);
+      // If no final presentation or final edit found, don't show error - let other hooks handle it
+      console.log('⚠️ No final presentation data found, letting other hooks handle the fallback');
       setLoading(false);
-      
-      // Only show error toast if not in streaming mode
-      const urlParams = new URLSearchParams(window.location.search);
-      const isStreaming = urlParams.get('stream') === 'true';
-      
-      if (!isStreaming) {
-        toast.error("Presentation not ready", {
-          description: "This presentation needs to be prepared first. Please complete the outline generation and template selection process.",
-          action: {
-            label: "Go to Outline",
-            onClick: () => window.location.href = '/outline'
-          }
-        });
-      }
+      setError(false);
       
     } catch (error) {
       console.error("Error fetching final presentation data:", error);

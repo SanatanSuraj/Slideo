@@ -282,8 +282,11 @@ export const LayoutProvider: React.FC<{
       setLoading(true);
       setError(null);
       dispatch(setLayoutLoading(true));
+      
+      // Clear the layout cache to ensure fresh loading
+      layoutCache.clear();
 
-      const templateResponse = await fetch("/api/templates");
+      const templateResponse = await fetch(`/api/templates?t=${Date.now()}`);
 
       if (!templateResponse.ok) {
         throw new Error(
@@ -310,14 +313,14 @@ export const LayoutProvider: React.FC<{
         ),
         templateSettings: mergeMaps(
           data.templateSettings,
-          customLayouts.templateSettings
+          customLayouts.templateSettings || new Map()
         ),
         fileMap: mergeMaps(data.fileMap, customLayouts.fileMap),
         templateLayouts: mergeMaps(
           data.templateLayoutsCache,
           customLayouts.templateLayoutsCache
         ),
-        layoutSchema: [...data.layoutSchema, ...customLayouts.layoutSchema],
+        layoutSchema: [...data.layoutSchema, ...(customLayouts.layoutSchema || [])],
         fullDataByTemplateID: mergeMaps(
           data.fullDataByTemplateID,
           customLayouts.fullDataByTemplateID
@@ -634,17 +637,44 @@ export const LayoutProvider: React.FC<{
     }
     // Create and cache layout if not available
     const file = fileInfo.fileName.replace(".tsx", "").replace(".ts", "");
+    console.log(`🔍 Loading layout: ${fileInfo.templateID}/${file}`);
+    
     const Layout = dynamic(
-      () => import(`@/presentation-templates/${fileInfo.templateID}/${file}`),
+      () => {
+        console.log(`🔍 Attempting to import: @/presentation-templates/${fileInfo.templateID}/${file}`);
+        return import(`@/presentation-templates/${fileInfo.templateID}/${file}`)
+          .then((module) => {
+            console.log(`✅ Successfully imported layout: ${fileInfo.templateID}/${file}`, module);
+            return module;
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to load layout ${fileInfo.templateID}/${file}:`, error);
+            // Return a fallback component
+            return {
+              default: ({ data }: { data: any }) => (
+                <div className="w-full aspect-[16/9] bg-red-100 border-2 border-red-300 rounded-lg flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-red-600 font-semibold">Layout Load Error</p>
+                    <p className="text-red-500 text-sm">{fileInfo.templateID}/{file}</p>
+                    <p className="text-red-400 text-xs mt-2">{error.message}</p>
+                  </div>
+                </div>
+              )
+            };
+          });
+      },
       {
         loading: () => (
-          <div className="w-full aspect-[16/9] bg-gray-100 animate-pulse rounded-lg" />
+          <div className="w-full aspect-[16/9] bg-gray-100 animate-pulse rounded-lg flex items-center justify-center">
+            <p className="text-gray-600">Loading layout...</p>
+          </div>
         ),
         ssr: false,
       }
     ) as React.ComponentType<{ data: any }>;
 
     layoutCache.set(cacheKey, Layout);
+    console.log(`✅ Layout loaded and cached: ${cacheKey}`);
     return Layout;
   };
 

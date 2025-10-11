@@ -103,7 +103,7 @@ export class StreamingClient {
           buffer = events.remaining;
         }
       } catch (error) {
-        if (error.name !== 'AbortError') {
+        if ((error as any).name !== 'AbortError') {
           console.error('🔍 StreamingClient: Read error:', error);
           this.options.onError?.(error as Error);
         }

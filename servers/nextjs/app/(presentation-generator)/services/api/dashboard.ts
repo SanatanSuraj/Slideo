@@ -48,7 +48,7 @@ export class DashboardApi {
       const data = await ApiResponseHandler.handleResponse(response, "Failed to fetch presentations");
       console.log('DashboardApi.getPresentations: Successfully fetched presentations:', {
         count: data?.length || 0,
-        presentations: data?.map(p => ({ id: p.id, title: p.title, updated_at: p.updated_at })) || []
+        presentations: data?.map((p: any) => ({ id: p.id, title: p.title, updated_at: p.updated_at })) || []
       });
       
       return data;

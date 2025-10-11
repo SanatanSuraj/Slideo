@@ -7,6 +7,7 @@ import {
   setStreaming,
   setSaving,
   setSaved,
+  setOutlines,
 } from "@/store/slices/presentationGeneration";
 import { jsonrepair } from "jsonrepair";
 import { toast } from "sonner";
@@ -111,7 +112,7 @@ export const usePresentationStreaming = (
                 console.log('🔍 Accumulating chunks, not complete JSON yet');
               }
             } else if (data.type === "complete") {
-              console.log('🔍 Stream completed with final data');
+              console.log('🔍 Stream completed with final data:', data);
               if (data.presentation) {
                 // Parse slide content from JSON string to object for complete data
                 const processedPresentation = {
@@ -136,6 +137,9 @@ export const usePresentationStreaming = (
               }
               setLoading(false);
               dispatch(setStreaming(false));
+              
+              // Clear the streaming timeout
+              clearTimeout(streamingTimeout);
               
               // Show saving indicator
               dispatch(setSaving(true));
@@ -219,31 +223,51 @@ export const usePresentationStreaming = (
       setError(true);
       setLoading(false);
       dispatch(setStreaming(false));
+      
+      // Clear the streaming timeout
+      clearTimeout(streamingTimeout);
     });
   };
 
   useEffect(() => {
-    // Early exit if no presentation ID
-    if (!presentationId) {
-      return;
-    }
-
     const initializeStream = async () => {
+      // Early exit if no presentation ID
+      if (!presentationId) {
+        return;
+      }
       dispatch(setStreaming(true));
       dispatch(clearPresentationData());
 
+      // Add timeout to prevent infinite streaming
+      const streamingTimeout = setTimeout(() => {
+        console.warn('⚠️ Streaming timeout - forcing completion');
+        setLoading(false);
+        dispatch(setStreaming(false));
+      }, 120000); // 2 minute timeout
+
       trackEvent(MixpanelEvent.Presentation_Stream_API_Call);
 
-      // Get token from localStorage for authentication
-      const token = localStorage.getItem('authToken');
-      console.log('🔍 usePresentationStreaming: Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'None');
+      // Get authentication headers using the proper auth system
+      const { getAuthHeader } = await import('../../services/api/header');
+      const authHeaders = getAuthHeader();
+      console.log('🔍 usePresentationStreaming: Auth headers:', authHeaders);
+      
+      // If no auth token, skip the API call and let other hooks handle it
+      if (!authHeaders.Authorization) {
+        console.log('🔍 No auth token available, skipping streaming initialization');
+        setLoading(false);
+        dispatch(setStreaming(false));
+        setError(false);
+        return;
+      }
       
       // COMPLETELY DIFFERENT APPROACH: Check if presentation is prepared first
       try {
         const checkResponse = await fetch(`/api/v1/ppt/presentation/${presentationId}`, {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            ...authHeaders,
+            'Content-Type': 'application/json',
           },
         });
 
@@ -330,7 +354,8 @@ export const usePresentationStreaming = (
             const checkResponse = await fetch(`/api/v1/presentation_final_edits/check/${presentationId}`, {
               method: 'GET',
               headers: {
-                'Authorization': `Bearer ${token}`,
+                ...authHeaders,
+                'Content-Type': 'application/json',
               },
             });
 
@@ -350,6 +375,7 @@ export const usePresentationStreaming = (
 
           console.log('✅ Presentation is prepared and stream requested, starting streaming...');
           // Start actual streaming to generate slides
+          const token = authHeaders.Authorization?.replace('Bearer ', '') || '';
           startStreaming(token);
         } else {
           console.log('✅ Presentation is prepared, fetching slides...');
@@ -362,6 +388,15 @@ export const usePresentationStreaming = (
         console.error('❌ Error checking presentation:', error);
         setLoading(false);
         dispatch(setStreaming(false));
+        
+        // Check if it's an authentication error
+        if (error instanceof Error && (error.message.includes('credentials') || error.message.includes('token'))) {
+          console.log('🔍 Authentication error detected, falling back to regular data loading');
+          setError(false);
+          // Don't show error toast for auth issues, let other hooks handle it
+          return;
+        }
+        
         setError(true);
         toast.error("Failed to load presentation", {
           description: "There was an error loading the presentation. Please try again or go back to the outline page.",
@@ -374,7 +409,9 @@ export const usePresentationStreaming = (
     };
 
     // ALWAYS check presentation status first, regardless of stream parameter
-    initializeStream();
+    if (presentationId) {
+      initializeStream();
+    }
 
     return () => {
       // Cleanup StreamingClient if it exists

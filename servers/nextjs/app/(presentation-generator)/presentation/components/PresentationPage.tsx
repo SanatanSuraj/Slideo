@@ -75,6 +75,45 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     setIsFullscreen
   );
 
+  // Debug: Log current state
+  console.log('🔍 PresentationPage - Current state:', {
+    hasPresentationData: !!presentationData,
+    slidesCount: presentationData?.slides?.length || 0,
+    loading,
+    isStreaming,
+    stream,
+    hasOutlines: !!outlines,
+    outlinesLength: outlines?.length || 0
+  });
+
+  // Debug: Log slide data
+  if (presentationData?.slides) {
+    console.log('🔍 PresentationPage - Slide data:', presentationData.slides.map((slide: any, index: number) => ({
+      index,
+      id: slide.id,
+      layout: slide.layout,
+      layout_group: slide.layout_group,
+      content: slide.content,
+      contentType: typeof slide.content
+    })));
+  }
+
+  // Add timeout to prevent infinite loading
+  useEffect(() => {
+    if (stream && isStreaming) {
+      const timeout = setTimeout(() => {
+        console.warn('⚠️ Streaming timeout - forcing completion');
+        // Force completion if streaming takes too long
+        if (presentationData?.slides && presentationData.slides.length > 0) {
+          // If we have slides, assume streaming is complete
+          window.location.href = `/presentation?id=${presentation_id}`;
+        }
+      }, 60000); // 60 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [stream, isStreaming, presentationData, presentation_id]);
+
   // Initialize streaming only if presentation is prepared
   usePresentationStreaming(
     presentation_id,
@@ -191,7 +230,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   if (isPresentMode) {
     return (
       <PresentationMode
-        slides={presentationData?.slides!}
+        slides={presentationData?.slides || []}
         currentSlide={selectedSlide}
         isFullscreen={isFullscreen}
         onFullscreenToggle={toggleFullscreen}
@@ -248,9 +287,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
       <div
         style={{
-          background: "#c8c7c9",
+          background: "#1a1a1a",
         }}
-        className="flex flex-1 relative pt-6"
+        className="flex flex-1 relative"
       >
         <SidePanel
           selectedSlide={selectedSlide}
@@ -260,10 +299,10 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           setIsMobilePanelOpen={setIsMobilePanelOpen}
         />
         
-        <div className="flex-1 h-[calc(100vh-100px)] overflow-y-auto">
+        <div className="flex-1 h-[calc(100vh-100px)] overflow-y-auto bg-[#1a1a1a]">
           <div
             id="presentation-slides-wrapper"
-            className="mx-auto flex flex-col items-center overflow-hidden justify-center p-2 sm:p-6 pt-0"
+            className="mx-auto flex flex-col items-center overflow-hidden justify-center p-4"
           >
             {error ? (
               <div className="relative w-full h-[calc(100vh-120px)] mx-auto flex items-center justify-center">
@@ -284,7 +323,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             ) : !presentationData ||
             loading ||
             isStreaming ||
-            stream ||
+            (stream && isStreaming) || // Only show loading if stream=true AND actually streaming
             !presentationData?.slides ||
             presentationData?.slides.length === 0 ? (
               <div className="relative w-full h-[calc(100vh-120px)] mx-auto">
@@ -292,20 +331,50 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                   {Array.from({ length: 2 }).map((_, index) => (
                     <Skeleton
                       key={index}
-                      className="aspect-video bg-gray-400 my-4 w-full mx-auto max-w-[1280px]"
+                      className="aspect-video bg-[#404040] my-4 w-full mx-auto max-w-[1280px]"
                     />
                   ))}
                 </div>
-                {(stream || loading || isStreaming) && (
-                  <LoadingState 
-                    message={
-                      stream || isStreaming
-                        ? "Generating slides with AI..." 
-                        : loading 
-                        ? "Loading your presentation..." 
-                        : undefined
-                    } 
-                  />
+                {(loading || isStreaming) && (
+                  <div className="relative">
+                    <LoadingState 
+                      message={
+                        isStreaming
+                          ? "Generating slides with AI..." 
+                          : loading 
+                          ? "Loading your presentation..." 
+                          : undefined
+                      } 
+                    />
+                    {/* Add skip button if streaming takes too long */}
+                    {stream && (
+                      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            console.log('🔍 User clicked skip loading');
+                            window.location.href = `/presentation?id=${presentation_id}`;
+                          }}
+                          className="bg-white/90 hover:bg-white text-gray-800 border-gray-300"
+                        >
+                          Skip Loading
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            console.log('🔍 User clicked force complete');
+                            // Force complete by removing stream parameter and reloading
+                            const url = new URL(window.location.href);
+                            url.searchParams.delete('stream');
+                            window.location.href = url.toString();
+                          }}
+                          className="bg-blue-500/90 hover:bg-blue-500 text-white border-blue-500"
+                        >
+                          Force Complete
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
@@ -323,6 +392,115 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                   ))}
               </>
             )}
+          </div>
+        </div>
+
+        {/* Right Sidebar - PowerPoint-style editing tools */}
+        <div className="w-[60px] bg-[#2d2d2d] border-l border-[#404040] flex flex-col items-center py-4">
+          {/* Search */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Text */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <span className="text-sm font-bold">Aa</span>
+            </button>
+          </div>
+
+          {/* Image */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Grid/Layout */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* NEW Badge */}
+          <div className="mb-4 relative">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
+            <div className="absolute -top-1 -right-1 bg-[#0078d4] text-white text-xs px-1 rounded text-[10px] font-bold">
+              NEW
+            </div>
+          </div>
+
+          {/* Chart */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Video */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0V4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Line */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Pen/Edit */}
+          <div className="mb-4">
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1"></div>
+
+          {/* Zoom level */}
+          <div className="mb-2">
+            <span className="text-[#a0a0a0] text-xs">100%</span>
+          </div>
+
+          {/* Help */}
+          <div>
+            <button className="w-10 h-10 bg-[#404040] hover:bg-[#505050] rounded flex items-center justify-center text-white">
+              <span className="text-sm font-bold">?</span>
+            </button>
           </div>
         </div>
       </div>

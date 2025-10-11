@@ -119,8 +119,19 @@ const SlideContent = ({ slide, index, presentationId }: SlideContentProps) => {
 
   // Memoized slide content rendering to prevent unnecessary re-renders
   const slideContent = useMemo(() => {
-    return renderSlideContent(slide, isStreaming ? false : true); // Enable edit mode for main content
-  }, [renderSlideContent, slide, isStreaming]);
+    // Debug: Log slide data being passed to renderSlideContent
+    console.log(`🔍 SlideContent - Slide ${index + 1} data:`, {
+      slide,
+      slideId: slide.id,
+      slideLayout: slide.layout,
+      slideGroup: slide.layout_group,
+      slideContent: slide.content,
+      slideContentType: typeof slide.content
+    });
+    
+    // Always render in non-edit mode for better display like Gamma.app
+    return renderSlideContent(slide, false);
+  }, [renderSlideContent, slide, index]);
 
   useEffect(() => {
     if (loading) {
@@ -156,8 +167,8 @@ const SlideContent = ({ slide, index, presentationId }: SlideContentProps) => {
         >
           {/* render slides */}
           {loading ? (
-            <div className="flex flex-col bg-white aspect-video items-center justify-center h-full">
-              <Loader2 className="w-8 h-8 animate-spin" />
+            <div className="flex flex-col bg-[#1a1a1a] aspect-video items-center justify-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-white" />
             </div>
           ) : (
             slideContent

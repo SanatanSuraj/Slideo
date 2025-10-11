@@ -47,7 +47,7 @@ export async function fetchWithAuth(
   }
   
   // Prepare headers with explicit Authorization
-  const headers: HeadersInit = {
+  const headers: any = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     ...fetchOptions.headers,
@@ -133,7 +133,7 @@ export async function fetchWithAuthFormData(
   }
   
   // Prepare headers (don't set Content-Type for FormData)
-  const headers: HeadersInit = {
+  const headers: any = {
     'Accept': 'application/json',
     ...fetchOptions.headers,
   };

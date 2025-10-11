@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RootState } from "@/store/store";
 import { useSelector } from "react-redux";
@@ -38,6 +38,14 @@ const OutlinePage: React.FC = () => {
     selectedTemplate,
     setActiveTab
   );
+
+  // Handle template application
+  const handleApplyTemplate = useCallback(async (template: Template) => {
+    if (!template) return;
+    
+    // Call the same handleSubmit function to apply the template
+    await handleSubmit();
+  }, [handleSubmit]);
   if (!presentation_id) {
     return <EmptyStateView />;
   }
@@ -81,6 +89,7 @@ const OutlinePage: React.FC = () => {
                   <TemplateSelection
                     selectedTemplate={selectedTemplate}
                     onSelectTemplate={setSelectedTemplate}
+                    onApplyTemplate={handleApplyTemplate}
                   />
                 </div>
               </TabsContent>

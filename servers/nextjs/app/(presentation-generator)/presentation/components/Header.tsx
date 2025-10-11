@@ -108,10 +108,9 @@ const Header = ({
           trackEvent(MixpanelEvent.Navigation, { from: pathname, to });
           router.push(to);
         }}
-        variant="ghost"
-        className="border border-white font-bold text-white rounded-[32px] transition-all duration-300 group"
+        className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold rounded transition-all duration-300 group flex items-center gap-2"
       >
-        <Play className="w-4 h-4 mr-1 stroke-white group-hover:stroke-black" />
+        <Play className="w-4 h-4" />
         Present
       </Button>
 
@@ -148,9 +147,7 @@ const Header = ({
         showProgress={true}
         duration={40}
       />
-      <div
-
-        className="bg-[#5146E5] w-full shadow-lg sticky top-0 ">
+      <div className="bg-[#2d2d2d] w-full shadow-lg sticky top-0 border-b border-[#404040]">
 
         <Announcement />
         <Wrapper className="flex items-center justify-between py-1">

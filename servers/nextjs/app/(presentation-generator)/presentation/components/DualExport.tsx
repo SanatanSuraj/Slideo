@@ -66,40 +66,81 @@ const DualExport: React.FC<DualExportProps> = ({
         throw new Error('PDF export is only available in browser environment');
       }
 
-      // Get the presentation slides wrapper element
+      // Use the browser's built-in print functionality for PDF export
       const slidesWrapper = document.getElementById('presentation-slides-wrapper');
       if (!slidesWrapper) {
         throw new Error('Presentation slides not found');
       }
 
-      // Dynamically import html2pdf to avoid SSR issues
-      const html2pdf = (await import('html2pdf.js')).default;
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('Unable to open print window. Please allow popups for this site.');
+      }
 
-      // Configure html2pdf options
-      const opt = {
-        margin: 0,
-        filename: `${presentationData.title || 'presentation'}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { 
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff'
-        },
-        jsPDF: { 
-          unit: 'in', 
-          format: 'a4', 
-          orientation: 'landscape' 
-        }
+      // Get the HTML content of the slides
+      const slidesHTML = slidesWrapper.innerHTML;
+      
+      // Create a complete HTML document for printing
+      const printHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${presentationData.title || 'Presentation'}</title>
+          <style>
+            @page {
+              size: A4 landscape;
+              margin: 0.5in;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              margin: 0;
+              padding: 0;
+              background: white;
+            }
+            .slide {
+              page-break-after: always;
+              width: 100%;
+              min-height: 100vh;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+              padding: 20px;
+              box-sizing: border-box;
+            }
+            .slide:last-child {
+              page-break-after: avoid;
+            }
+            @media print {
+              .slide {
+                page-break-after: always;
+              }
+              .slide:last-child {
+                page-break-after: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${slidesHTML}
+        </body>
+        </html>
+      `;
+
+      // Write the HTML to the print window
+      printWindow.document.write(printHTML);
+      printWindow.document.close();
+
+      // Wait for content to load, then trigger print dialog
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+          printWindow.close();
+        }, 500);
       };
-
-      // Generate PDF
-      const pdfBlob = await html2pdf().set(opt).from(slidesWrapper).outputPdf('blob');
       
-      // Download the PDF
-      downloadFile(pdfBlob, `${presentationData.title || 'presentation'}.pdf`);
-      
-      toast.success("PDF exported successfully!");
+      toast.success("PDF export dialog opened! Use 'Save as PDF' in the print dialog.");
       
     } catch (error) {
       console.error("PDF export error:", error);
@@ -275,7 +316,7 @@ const DualExport: React.FC<DualExportProps> = ({
 
       // Generate and download the PPTX
       const pptxBlob = await pptx.writeFile();
-      downloadFile(pptxBlob as Blob, `${presentationData.title || 'presentation'}.pptx`);
+      downloadFile(pptxBlob as unknown as Blob, `${presentationData.title || 'presentation'}.pptx`);
       
       toast.success("PPTX exported successfully!");
       

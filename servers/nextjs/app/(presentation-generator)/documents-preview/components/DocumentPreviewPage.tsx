@@ -59,6 +59,9 @@ const DocumentsPreviewPage: React.FC = () => {
   const { config, files } = useSelector(
     (state: RootState) => state.pptGenUpload
   );
+  const { presentation_id } = useSelector(
+    (state: RootState) => state.presentationGeneration
+  );
 
   // Local state
   const [textContents, setTextContents] = useState<TextContents>({});
