@@ -124,3 +124,4 @@ const ImageSchema = z.object({
 
   export { Schema, layoutId, layoutName, layoutDescription }
   export default dynamicSlideLayout
+

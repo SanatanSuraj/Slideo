@@ -132,12 +132,15 @@ const DualExport: React.FC<DualExportProps> = ({
       if (result.success && result.presentation_and_path?.s3_pptx_url) {
         // Download the PPTX file
         let pptxUrl = result.presentation_and_path.s3_pptx_url;
+        console.log('Original download URL:', pptxUrl);
         
         // If it's a relative URL, construct the full FastAPI URL
         if (pptxUrl.startsWith('/api/')) {
           const fastApiBaseUrl = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
           pptxUrl = `${fastApiBaseUrl}${pptxUrl}`;
         }
+        
+        console.log('Final download URL:', pptxUrl);
         
         // Create download link directly (token is already in the URL)
         const link = document.createElement('a');
@@ -149,6 +152,7 @@ const DualExport: React.FC<DualExportProps> = ({
         
         toast.success("PPTX exported successfully!");
       } else {
+        console.error('Export response:', result);
         throw new Error('Export response did not contain valid PPTX URL');
       }
       

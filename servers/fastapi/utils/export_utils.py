@@ -22,11 +22,26 @@ async def export_presentation(
 ) -> PresentationAndPath:
     if export_as == "pptx":
 
+        # Get authentication token for PPTX model conversion
+        auth_token = None
+        if user_id:
+            try:
+                # Generate a temporary token for PPTX model conversion
+                from auth.jwt_handler import create_access_token
+                auth_token = create_access_token(data={"sub": user_id}, expires_delta=None)
+                print(f"Generated auth token for user {user_id}: {auth_token[:20]}...")
+            except Exception as e:
+                print(f"Warning: Could not generate auth token for PPTX model conversion: {e}")
+        else:
+            print("Warning: No user_id provided for token generation")
+
         # Get the converted PPTX model from the Next.js service
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://localhost:3000/api/presentation_to_pptx_model?id={presentation_id}"
-            ) as response:
+            pptx_model_url = f"http://localhost:3000/api/presentation_to_pptx_model?id={presentation_id}"
+            if auth_token:
+                pptx_model_url += f"&token={auth_token}"
+            
+            async with session.get(pptx_model_url) as response:
                 if response.status != 200:
                     error_text = await response.text()
                     print(f"Failed to get PPTX model: {error_text}")
@@ -92,10 +107,23 @@ async def export_presentation(
                 print(f"Failed to save PPTX to MongoDB: {e}")
                 # Continue with local file path if MongoDB save fails
 
+        # Create proper download URL for MongoDB assets
+        download_url = None
+        if save_to_mongodb and user_id and mongodb_path.startswith("mongodb://asset/"):
+            asset_id = mongodb_path.replace("mongodb://asset/", "")
+            # Use temporary download endpoint with token
+            if auth_token:
+                download_url = f"/api/v1/ppt/pptx/{asset_id}/download-temp?token={auth_token}"
+                print(f"Created download URL: {download_url}")
+            else:
+                print("Warning: No auth token available for download URL")
+                # Fallback to regular download endpoint (will require authentication)
+                download_url = f"/api/v1/ppt/pptx/{asset_id}/download"
+        
         return PresentationAndPath(
             presentation_id=str(presentation_id),
             path=mongodb_path,
-            s3_pptx_url=mongodb_path if export_as == "pptx" else None,
+            s3_pptx_url=download_url if export_as == "pptx" else None,
             s3_pdf_url=mongodb_path if export_as == "pdf" else None,
         )
     else:
@@ -107,7 +135,6 @@ async def export_presentation(
                 # generate a temporary token or use a different authentication method
                 try:
                     # Try to get token from environment or generate one
-                    import os
                     auth_token = os.getenv("PDF_EXPORT_TOKEN")
                     if not auth_token:
                         # Generate a temporary token for PDF export

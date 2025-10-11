@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const id = await getPresentationId(request);
-    [browser, page] = await getBrowserAndPage(id);
+    const token = await getAuthToken(request);
+    [browser, page] = await getBrowserAndPage(id, token);
     const screenshotsDir = getScreenshotsDir();
 
     const { slides, speakerNotes } = await getSlidesAndSpeakerNotes(page);
@@ -75,7 +76,11 @@ async function getPresentationId(request: NextRequest) {
   return id;
 }
 
-async function getBrowserAndPage(id: string): Promise<[Browser, Page]> {
+async function getAuthToken(request: NextRequest) {
+  return request.nextUrl.searchParams.get("token");
+}
+
+async function getBrowserAndPage(id: string, token?: string | null): Promise<[Browser, Page]> {
   const browser = await puppeteer.launch({
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
     headless: true,
@@ -98,7 +103,23 @@ async function getBrowserAndPage(id: string): Promise<[Browser, Page]> {
   await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
   page.setDefaultNavigationTimeout(300000);
   page.setDefaultTimeout(300000);
-  await page.goto(`http://localhost:3000/pdf-maker?id=${id}`, {
+
+  // If token is provided, set it in localStorage before navigating
+  if (token) {
+    console.log(`🔧 PPTX Model: Setting authentication token in browser context`);
+    await page.evaluateOnNewDocument((authToken) => {
+      localStorage.setItem('authToken', authToken);
+      console.log('🔧 PPTX Model: Token set in localStorage');
+    }, token);
+  }
+
+  // Navigate to the PDF maker page with token as URL parameter
+  const pdfMakerUrl = token 
+    ? `http://localhost:3000/pdf-maker?id=${id}&token=${encodeURIComponent(token)}`
+    : `http://localhost:3000/pdf-maker?id=${id}`;
+  console.log(`🔧 PPTX Model: Navigating to ${pdfMakerUrl}`);
+  
+  await page.goto(pdfMakerUrl, {
     waitUntil: "networkidle0",
     timeout: 300000,
   });
@@ -111,13 +132,8 @@ async function closeBrowserAndPage(browser: Browser | null, page: Page | null) {
 }
 
 function getScreenshotsDir() {
-  const tempDir = process.env.TEMP_DIRECTORY;
-  if (!tempDir) {
-    console.warn(
-      "TEMP_DIRECTORY environment variable not set, skipping screenshot"
-    );
-    throw new ApiError("TEMP_DIRECTORY environment variable not set");
-  }
+  const tempDir = process.env.TEMP_DIRECTORY || path.join(process.cwd(), "app_data", "temp");
+  console.log(`Using temp directory: ${tempDir}`);
   const screenshotsDir = path.join(tempDir, "screenshots");
   if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -250,13 +266,22 @@ async function getSlidesAndSpeakerNotes(page: Page) {
   const slides_wrapper = await getSlidesWrapper(page);
   const speakerNotes = await getSpeakerNotes(slides_wrapper);
   const slides = await slides_wrapper.$$(":scope > div > div");
+  
+  if (slides.length === 0) {
+    throw new ApiError("No slides found in presentation - presentation may be empty or not loaded properly");
+  }
+  
+  console.log(`Found ${slides.length} slides and ${speakerNotes.length} speaker notes`);
   return { slides, speakerNotes };
 }
 
 async function getSlidesWrapper(page: Page): Promise<ElementHandle<Element>> {
+  // Wait for the slides wrapper to be available
+  await page.waitForSelector("#presentation-slides-wrapper", { timeout: 30000 });
+  
   const slides_wrapper = await page.$("#presentation-slides-wrapper");
   if (!slides_wrapper) {
-    throw new ApiError("Presentation slides not found");
+    throw new ApiError("Presentation slides not found - slides wrapper element not found on page");
   }
   return slides_wrapper;
 }

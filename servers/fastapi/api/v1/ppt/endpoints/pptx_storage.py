@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response as FastAPIResponse
 from typing import List, Optional
 from models.mongo.user import User
 from auth.dependencies import get_current_active_user
@@ -44,15 +44,85 @@ async def download_pptx_file(
         if not file_content:
             raise HTTPException(status_code=404, detail="File content not found")
         
-        # Create streaming response
-        file_stream = io.BytesIO(file_content)
+        # Sanitize filename for download
+        import urllib.parse
+        safe_filename = urllib.parse.quote(asset.filename)
         
-        return StreamingResponse(
-            io.BytesIO(file_content),
+        # Create response with file content
+        return FastAPIResponse(
+            content=file_content,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             headers={
-                "Content-Disposition": f"attachment; filename={asset.filename}",
-                "Content-Length": str(len(file_content))
+                "Content-Disposition": f"attachment; filename=\"{safe_filename}\""
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download PPTX file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to download file")
+
+@PPTX_STORAGE_ROUTER.get("/pptx/{asset_id}/download-temp")
+async def download_pptx_file_temp(
+    asset_id: str,
+    token: str
+):
+    """
+    Download PPTX file from MongoDB storage using temporary token
+    """
+    try:
+        logger.info(f"Download request for asset {asset_id} with token: {token[:20]}...")
+        
+        # Verify the token
+        from auth.jwt_handler import verify_token
+        try:
+            payload = verify_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                logger.error("Token verification failed: no user_id in payload")
+                raise HTTPException(status_code=401, detail="Invalid token")
+            logger.info(f"Token verified for user: {user_id}")
+        except Exception as e:
+            logger.error(f"Token verification failed: {e}")
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        
+        # Get asset metadata
+        asset = await asset_crud.get_asset_by_id(asset_id)
+        if not asset:
+            logger.error(f"Asset not found: {asset_id}")
+            raise HTTPException(status_code=404, detail="PPTX file not found")
+        
+        logger.info(f"Asset found: {asset_id}, owner: {asset.user_id}, requester: {user_id}")
+        
+        # Check if user owns the file
+        if asset.user_id != user_id:
+            logger.error(f"Access denied: asset owner {asset.user_id} != requester {user_id}")
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Get file content based on storage type
+        storage_type = asset.metadata.get("storage_type", "gridfs")
+        
+        if storage_type == "gridfs":
+            gridfs_service = get_gridfs_service()
+            file_content = await gridfs_service.get_pptx_file(asset_id)
+        else:
+            binary_service = get_binary_storage_service()
+            file_content = await binary_service.get_pptx_file(asset_id)
+        
+        if not file_content:
+            raise HTTPException(status_code=404, detail="File content not found")
+        
+        # Sanitize filename for download
+        import urllib.parse
+        safe_filename = urllib.parse.quote(asset.filename)
+        
+        # Create response with file content
+        return FastAPIResponse(
+            content=file_content,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{safe_filename}\""
             }
         )
         

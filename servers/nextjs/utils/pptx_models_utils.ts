@@ -80,8 +80,16 @@ function convertElementToPptxShape(
   element: ElementAttributes
 ): PptxTextBoxModel | PptxAutoShapeBoxModel | PptxConnectorModel | PptxPictureBoxModel | null {
 
+  // If no position data, try to create a default position
   if (!element.position) {
-    return null;
+    // For elements without position, we'll create a default position
+    // This allows the conversion to proceed even if position data is missing
+    element.position = {
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 50
+    };
   }
 
   if (element.tagName === 'img' || (element.className && typeof element.className === 'string' && element.className.includes('image')) || element.imageSrc) {
